@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Upload document cabinet</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <div class="brand">
+          <span>Cardio Cabinet</span>
+          <strong>Upload securise vers le PC du cabinet</strong>
+        </div>
+
+        <div id="status" class="status">Verification du lien...</div>
+
+        <form id="uploadForm" hidden>
+          <label>
+            Type document
+            <select name="type_document">
+              <option>ECG</option>
+              <option>Analyse biologique</option>
+              <option>Echocardiographie</option>
+              <option>IRM cardiaque</option>
+              <option>Scanner coronaire</option>
+              <option>DICOM</option>
+              <option>PDF</option>
+            </select>
+          </label>
+
+          <label>
+            Notes
+            <textarea name="notes" rows="3" placeholder="Note optionnelle pour le cabinet"></textarea>
+          </label>
+
+          <label class="drop">
+            <input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.dcm,.dicom,application/pdf,image/jpeg,image/png,application/dicom" required />
+            <span>Choisir PDF, JPG, PNG ou DICOM</span>
+          </label>
+
+          <button type="submit">Envoyer au dossier patient</button>
+        </form>
+
+        <div id="progressBar" class="progress-bar" hidden>
+          <div id="progressFill" class="progress-fill"></div>
+          <span id="progressText" class="progress-text"></span>
+        </div>
+
+        <p class="privacy">Aucune donnee medicale n'est stockee sur Vercel. Le fichier est envoye directement au PC du cabinet via le tunnel Cloudflare.</p>
+      </section>
+    </main>
+
+    <script src="/script.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+# Cloudflare Tunnel configuration for Cardio Cabinet Pro
+# Place this file at: C:\Users\<YOUR_USER>\.cloudflared\config.yml
+# (or ~/.cloudflared/config.yml on Linux/Mac)
+
+tunnel: cardio-app
+credentials-file: C:\Users\<YOUR_USER>\.cloudflared\<TUNNEL_ID>.json
+
+ingress:
+  - hostname: upload.myclinic.com
+    service: http://127.0.0.1:8000
+  - service: http_status:404

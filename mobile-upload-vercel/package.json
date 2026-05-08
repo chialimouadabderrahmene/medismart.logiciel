@@ -1,0 +1,9 @@
+{
+  "name": "clinic-upload-mobile-page",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "node -e \"console.log('static upload page')\""
+  }
+}

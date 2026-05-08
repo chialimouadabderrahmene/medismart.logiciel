@@ -1,0 +1,39 @@
+{
+  "name": "gestion-medicale-web",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "api": "python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload",
+    "api:node": "node server/index.js",
+    "dev:full": "concurrently \"npm run api\" \"npm run dev\"",
+    "desktop:dev": "concurrently \"npm run api\" \"tauri dev\"",
+    "desktop:build": "tauri build",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "mobile:vercel:dev": "cd mobile-upload-vercel && vercel dev",
+    "import:db": "node scripts/import-mysql.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "@tauri-apps/api": "^2.2.0",
+    "animejs": "^3.2.2",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "lucide-react": "^0.468.0",
+    "mysql2": "^3.11.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^6.0.5",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  }
+}

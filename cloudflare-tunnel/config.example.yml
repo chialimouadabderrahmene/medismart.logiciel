@@ -1,0 +1,7 @@
+tunnel: cardio-app
+credentials-file: C:\Users\PC SOFT\.cloudflared\cardio-app.json
+
+ingress:
+  - hostname: upload.myclinic.com
+    service: http://127.0.0.1:8000
+  - service: http_status:404

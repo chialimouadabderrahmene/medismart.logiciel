@@ -1,0 +1,149 @@
+:root {
+  font-family: Arial, "Segoe UI", sans-serif;
+  color: #123957;
+  background: linear-gradient(180deg, #d8ecff, #f7fbff);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.panel {
+  display: grid;
+  gap: 14px;
+  width: min(520px, 100%);
+  border: 1px solid #73a4cf;
+  border-radius: 10px;
+  padding: 18px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(29, 88, 138, 0.18);
+}
+
+.brand span,
+.brand strong {
+  display: block;
+}
+
+.brand span {
+  color: #2b79b4;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.brand strong {
+  margin-top: 4px;
+  font-size: 20px;
+}
+
+form {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+select,
+textarea,
+input[type="file"] {
+  width: 100%;
+  border: 1px solid #8fb8d8;
+  border-radius: 7px;
+  padding: 10px;
+  background: #f8fcff;
+  color: #123957;
+}
+
+.drop {
+  border: 1px dashed #2b79b4;
+  border-radius: 9px;
+  padding: 12px;
+  background: #edf7ff;
+}
+
+.drop span {
+  font-weight: 400;
+}
+
+button {
+  min-height: 46px;
+  border: 1px solid #3f8f72;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #effff7, #97d8bd);
+  color: #103553;
+  font-weight: 700;
+}
+
+button:disabled {
+  opacity: 0.55;
+}
+
+.status {
+  border: 1px solid #9dbdd8;
+  border-radius: 7px;
+  padding: 10px;
+  background: #eef7ff;
+  font-size: 13px;
+}
+
+.status--ok {
+  border-color: #56a37c;
+  background: #effaf4;
+}
+
+.status--error {
+  border-color: #c74435;
+  background: #fff0ee;
+  color: #7b2118;
+}
+
+.privacy {
+  margin: 0;
+  color: #5b7288;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.progress-bar {
+  position: relative;
+  height: 28px;
+  border: 1px solid #8fb8d8;
+  border-radius: 7px;
+  background: #eef7ff;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #56a37c, #3fa97a);
+  border-radius: 6px;
+  transition: width 0.2s ease;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 700;
+  color: #123957;
+}

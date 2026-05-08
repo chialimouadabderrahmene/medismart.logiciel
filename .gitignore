@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+dist/
+
+# Environment & secrets
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rust / Tauri build artifacts
+src-tauri/target/
+src-tauri/target_*/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Data & backups
+data/*.sqlite3
+data/*.sqlite3-wal
+data/*.sqlite3-shm
+data/backups/
+
+# Vercel / Cloudflare
+.vercel/
+.wrangler/
+
+# Build outputs
+build/
+DEPLOY/
