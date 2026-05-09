@@ -13,3 +13,13 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Memory-friendly release profile — avoids rustc OOM on machines with < 8GB free RAM.
+# Slightly larger binary, slightly slower runtime, but reliably builds.
+[profile.release]
+opt-level = "s"        # optimize for size instead of full opt-level=3
+lto = false            # disable link-time optimization (LTO is the biggest RAM hog)
+codegen-units = 16     # parallel codegen reduces peak memory per worker
+strip = true
+panic = "abort"
+incremental = false

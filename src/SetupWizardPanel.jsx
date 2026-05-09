@@ -2,13 +2,18 @@ import React, { useState, useRef } from "react";
 import { CheckCircle2, ArrowRight, ArrowLeft, Upload, Database, RefreshCw } from "lucide-react";
 import { SPECIALITY_LIST } from "./specialities/index.js";
 
-const API = window.__TAURI__ ? "" : "http://127.0.0.1:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 async function apiCall(path, opts = {}) {
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     headers: opts.body && !(opts.body instanceof FormData) ? { "Content-Type": "application/json" } : {},
     ...opts,
   });
-  if (!res.ok) { const e = await res.json().catch(() => ({ detail: res.statusText })); throw new Error(e.detail || res.statusText); }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => res.statusText);
+    let detail = res.statusText;
+    try { const j = JSON.parse(txt); detail = j.detail || j.message || txt; } catch (_) { detail = txt || res.statusText; }
+    throw new Error(detail);
+  }
   return res.json();
 }
 
@@ -29,6 +34,7 @@ export default function SetupWizardPanel({ onDone }) {
     nom: "", ordre: "", telephone: "", email: "", adresse: "", clinic: ""
   });
   const [dataMode, setDataMode] = useState("new");
+  const [restoreFile, setRestoreFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const logoRef = useRef();
@@ -46,6 +52,19 @@ export default function SetupWizardPanel({ onDone }) {
   const finish = async () => {
     setSaving(true); setError("");
     try {
+      if (dataMode === "restore") {
+        if (!restoreFile) {
+          setError("Veuillez sélectionner un fichier de sauvegarde .sqlite3.");
+          setSaving(false);
+          return;
+        }
+        const form = new FormData();
+        form.append("file", restoreFile);
+        await apiCall("/api/setup/restore", { method: "POST", body: form });
+        // restore endpoint already marks setup complete; just notify parent
+        onDone(speciality, dataMode);
+        return;
+      }
       await apiCall("/api/setup/complete", {
         method: "POST",
         body: JSON.stringify({
@@ -178,6 +197,25 @@ export default function SetupWizardPanel({ onDone }) {
                 </button>
               ))}
             </div>
+
+            {dataMode === "restore" && (
+              <div className="sw-restore-file" style={{margin:"14px 0",padding:"12px 14px",background:"#0f172a",borderRadius:"8px",border:"1px solid #1e293b"}}>
+                <label style={{display:"block",fontSize:"13px",color:"#94a3b8",marginBottom:"8px"}}>
+                  Sélectionnez votre fichier de sauvegarde (.sqlite3)
+                </label>
+                <input
+                  type="file"
+                  accept=".sqlite3"
+                  onChange={e => setRestoreFile(e.target.files?.[0] || null)}
+                  style={{color:"#e2e8f0",fontSize:"13px"}}
+                />
+                {restoreFile && (
+                  <div style={{marginTop:"8px",fontSize:"12px",color:"#22c55e"}}>
+                    <CheckCircle2 size={12} style={{display:"inline",marginRight:"4px"}}/> {restoreFile.name}
+                  </div>
+                )}
+              </div>
+            )}
 
             {error && <div className="sw-error">{error}</div>}
 

@@ -1507,6 +1507,26 @@ def apply_light_migrations(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "visits", "fee_paid", "REAL NOT NULL DEFAULT 0")
     ensure_column(conn, "visits", "payment_status", "TEXT NOT NULL DEFAULT 'pending'")
     ensure_column(conn, "visits", "visit_type", "TEXT")
+    ensure_column(conn, "medicines_db", "specialty", "TEXT")
+    conn.execute("""CREATE TABLE IF NOT EXISTS favorite_medicines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        medicine_id INTEGER NOT NULL,
+        doctor_id INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(medicine_id, doctor_id),
+        FOREIGN KEY (medicine_id) REFERENCES medicines_db(id) ON DELETE CASCADE
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS recent_medicines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        medicine_id INTEGER NOT NULL,
+        doctor_id INTEGER NOT NULL DEFAULT 1,
+        last_used TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        use_count INTEGER NOT NULL DEFAULT 1,
+        UNIQUE(medicine_id, doctor_id),
+        FOREIGN KEY (medicine_id) REFERENCES medicines_db(id) ON DELETE CASCADE
+    )""")
+    conn.execute("""CREATE INDEX IF NOT EXISTS idx_medicines_specialty ON medicines_db(specialty COLLATE NOCASE)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS visit_types (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
@@ -1710,6 +1730,49 @@ def apply_light_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_import_logs_job ON import_logs(job_id)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_old_links ON old_patient_links(patient_id, old_code)")
 
+    # ── Bilan (lab/exam order) module ─────────────────────────────────────
+    conn.execute("""CREATE TABLE IF NOT EXISTS bilan_catalog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        category TEXT NOT NULL DEFAULT 'Autre',
+        description TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS bilans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_id INTEGER NOT NULL,
+        visit_id INTEGER,
+        requested_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        doctor_note TEXT,
+        status TEXT NOT NULL DEFAULT 'requested',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
+    )""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS bilan_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        bilan_id INTEGER NOT NULL,
+        catalog_id INTEGER,
+        custom_name TEXT,
+        result TEXT,
+        result_date TEXT,
+        unit TEXT,
+        reference_range TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        FOREIGN KEY (bilan_id) REFERENCES bilans(id) ON DELETE CASCADE
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bilans_patient ON bilans(patient_id, requested_date DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bilan_items_bilan ON bilan_items(bilan_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bilan_catalog_cat ON bilan_catalog(category, active)")
+
+    # ── Patient FTS5 table ────────────────────────────────────────────────────
+    conn.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS patients_fts USING fts5(
+        nom, prenom, telephone, code, adresse,
+        content='patients', content_rowid='id'
+    )""")
+
     # ── Incremental import tracking ───────────────────────────────────────────
     conn.execute("""CREATE TABLE IF NOT EXISTS old_record_links (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1850,8 +1913,8 @@ def insert_medicine_if_missing(conn: sqlite3.Connection, brand_name: str, values
     conn.execute(
         """INSERT INTO medicines_db
         (brand_name, dci, active_substance, form, dosage_strength, route,
-         indications, contraindications, interactions, source)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         indications, contraindications, interactions, source, specialty)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         values,
     )
 
@@ -1874,6 +1937,7 @@ def seed_medicines_db(conn: sqlite3.Connection) -> None:
                 json.dumps(med.get("contraindications", []), ensure_ascii=False),
                 json.dumps(med.get("interactions", []), ensure_ascii=False),
                 "local",
+                med.get("class_name", ""),
             ),
         )
     # Extra cardiology medicines for better autocomplete coverage
@@ -1914,9 +1978,9 @@ def seed_medicines_db(conn: sqlite3.Connection) -> None:
         if not exists:
             conn.execute(
                 """INSERT INTO medicines_db
-                (brand_name, dci, active_substance, form, dosage_strength, route, indications, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'local')""",
-                (brand, dci, dci, form, strength, route, f"{cls}: {indic}"),
+                (brand_name, dci, active_substance, form, dosage_strength, route, indications, source, specialty)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'local', ?)""",
+                (brand, dci, dci, form, strength, route, f"{cls}: {indic}", cls),
             )
 
     # ================================================================
@@ -2209,9 +2273,9 @@ def seed_medicines_db(conn: sqlite3.Connection) -> None:
             conn.execute(
                 """INSERT INTO medicines_db
                 (brand_name, dci, active_substance, form, dosage_strength, route,
-                 indications, contraindications, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'algerie')""",
-                (brand, dci, dci, form, strength, route, indic, contra),
+                 indications, contraindications, source, specialty)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'algerie', ?)""",
+                (brand, dci, dci, form, strength, route, indic, contra, indic),
             )
 
 
@@ -2614,6 +2678,196 @@ def current_school_year(reference: datetime | None = None) -> str:
     return f"{start_year}-{start_year + 1}"
 
 
+def rebuild_medicines_fts(conn: sqlite3.Connection) -> None:
+    """Rebuild the FTS5 index for medicines. Safe to run repeatedly."""
+    try:
+        fts_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='medicines_fts'"
+        ).fetchone()
+        if not fts_exists:
+            return
+        conn.execute("INSERT INTO medicines_fts(medicines_fts) VALUES('rebuild')")
+    except Exception:
+        pass
+
+
+def rebuild_patients_fts(conn: sqlite3.Connection) -> None:
+    """Rebuild the FTS5 index for patients. Safe to run on existing DBs."""
+    try:
+        fts_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='patients_fts'"
+        ).fetchone()
+        if not fts_exists:
+            return
+        conn.execute("INSERT INTO patients_fts(patients_fts) VALUES('rebuild')")
+    except Exception:
+        pass
+
+
+def ensure_patients_fts_triggers(conn: sqlite3.Connection) -> None:
+    """Create FTS5 triggers if missing (for existing DBs upgraded from older versions)."""
+    for trigger, sql in [
+        ("patients_fts_insert", """CREATE TRIGGER IF NOT EXISTS patients_fts_insert
+            AFTER INSERT ON patients BEGIN
+              INSERT INTO patients_fts(rowid, nom, prenom, telephone, code, adresse)
+              VALUES (new.id, new.nom, new.prenom, new.telephone, new.code, new.adresse);
+            END"""),
+        ("patients_fts_update", """CREATE TRIGGER IF NOT EXISTS patients_fts_update
+            AFTER UPDATE ON patients BEGIN
+              INSERT INTO patients_fts(patients_fts, rowid, nom, prenom, telephone, code, adresse)
+              VALUES ('delete', old.id, old.nom, old.prenom, old.telephone, old.code, old.adresse);
+              INSERT INTO patients_fts(rowid, nom, prenom, telephone, code, adresse)
+              VALUES (new.id, new.nom, new.prenom, new.telephone, new.code, new.adresse);
+            END"""),
+        ("patients_fts_delete", """CREATE TRIGGER IF NOT EXISTS patients_fts_delete
+            AFTER DELETE ON patients BEGIN
+              INSERT INTO patients_fts(patients_fts, rowid, nom, prenom, telephone, code, adresse)
+              VALUES ('delete', old.id, old.nom, old.prenom, old.telephone, old.code, old.adresse);
+            END"""),
+    ]:
+        try:
+            conn.execute(sql)
+        except Exception:
+            pass
+
+
+def seed_bilan_catalog(conn: sqlite3.Connection) -> None:
+    """Seed bilan_catalog. Runs only when table is empty (idempotent)."""
+    if conn.execute("SELECT COUNT(*) AS c FROM bilan_catalog").fetchone()["c"] > 0:
+        return
+    catalog = [
+        # Biologie
+        ("TSH us", "Biologie"),
+        ("HbA1c", "Biologie"),
+        ("Glycémie à jeun", "Biologie"),
+        ("Glycémie post-prandiale", "Biologie"),
+        ("Créatininémie", "Biologie"),
+        ("Clairance créatinine (MDRD)", "Biologie"),
+        ("DFG CKD-EPI / MDRD", "Biologie"),
+        ("Uree - Créatininémie", "Biologie"),
+        ("FNS (NFS complète)", "Biologie"),
+        ("FNS avec taux de plaquettes", "Biologie"),
+        ("Taux de réticulocytes", "Biologie"),
+        ("Frottis sanguin", "Biologie"),
+        ("VS - CRP", "Biologie"),
+        ("CRP", "Biologie"),
+        ("Facteur rhumatoïde", "Biologie"),
+        ("ASLO", "Biologie"),
+        ("Ferritinémie", "Biologie"),
+        ("Fer sérique", "Biologie"),
+        ("Taux de saturation de la transferrine", "Biologie"),
+        ("Cholestérol total - HDL - LDL - Triglycérides", "Biologie"),
+        ("HDL-Cholestérol", "Biologie"),
+        ("LDL-Cholestérol", "Biologie"),
+        ("Triglycérides", "Biologie"),
+        ("Lipoproteines Lp(a)", "Biologie"),
+        ("Troponine", "Biologie"),
+        ("Troponine hs-Tc", "Biologie"),
+        ("CPK", "Biologie"),
+        ("NT-proBNP", "Biologie"),
+        ("TP / INR", "Biologie"),
+        ("TP / INR URGENT", "Biologie"),
+        ("TCK", "Biologie"),
+        ("Fibrinogène", "Biologie"),
+        ("D-Dimères", "Biologie"),
+        ("Microalbuminurie 24h", "Biologie"),
+        ("Protéinurie 24h", "Biologie"),
+        ("Microalbuminurie sur spot urinaire", "Biologie"),
+        ("RAC (Albuminurie/Créatininurie)", "Biologie"),
+        ("ECBU + Antibiogramme", "Biologie"),
+        ("Ionogramme sanguin", "Biologie"),
+        ("Magnésémie", "Biologie"),
+        ("Calcémie", "Biologie"),
+        ("Phosphorémie", "Biologie"),
+        ("Vitamine D (25-OH-D3)", "Biologie"),
+        ("Vitamine B12 - Folate B9", "Biologie"),
+        ("Acide urique", "Biologie"),
+        ("Albuminémie / Protidémie", "Biologie"),
+        ("ALAT / ASAT (bilan hépatique)", "Biologie"),
+        ("Bilirubine totale/directe/indirecte", "Biologie"),
+        ("Phosphatase alcaline", "Biologie"),
+        ("PSA totale", "Biologie"),
+        ("Cortisolémie 08h matin", "Biologie"),
+        ("Cortisol libre urinaire 24h", "Biologie"),
+        ("Insulinémie à jeun", "Biologie"),
+        ("Indice HOMA-IR", "Biologie"),
+        ("IGF-1 sérique", "Biologie"),
+        ("Testostérone totale/biodisponible", "Biologie"),
+        ("AC anti-TPO", "Biologie"),
+        ("Sérologie HBs - HCV - HIV - TPHA", "Biologie"),
+        ("Sérologie hépatite A - HBs - HCV", "Biologie"),
+        ("Sérologie de Wright", "Biologie"),
+        ("Sérologie hydatique", "Biologie"),
+        ("IDR à la tuberculine", "Biologie"),
+        ("PCR SARS-CoV-2", "Biologie"),
+        ("Hémocult des selles", "Biologie"),
+        ("Parasitologie des selles", "Biologie"),
+        ("Électrophorèse des protéines sériques", "Biologie"),
+        ("Électrophorèse protéines urinaires (Bence-Jones)", "Biologie"),
+        ("Evaluation lymphocytes T et B", "Biologie"),
+        ("Amylasémie", "Biologie"),
+        ("Cétoneémie", "Biologie"),
+        ("Anti-CCP", "Biologie"),
+        ("ACE - alpha-foetoprotéine - CA125", "Biologie"),
+        # Radiologie / Imagerie
+        ("Échocardiographie Doppler (échocoeur)", "Radiologie"),
+        ("ÉchoDoppler vasculaire", "Radiologie"),
+        ("ÉchoDoppler artères rénales", "Radiologie"),
+        ("ÉchoDoppler troncs supra-aortiques", "Radiologie"),
+        ("ÉchoDoppler artériel membres inférieurs", "Radiologie"),
+        ("Radiographie thoracique face", "Radiologie"),
+        ("Téléthorax de face", "Radiologie"),
+        ("TDM thoracique", "Radiologie"),
+        ("TDM abdominal", "Radiologie"),
+        ("TDM rachis cervical", "Radiologie"),
+        ("TDM rachis lombo-sacré", "Radiologie"),
+        ("TDM panaortique", "Radiologie"),
+        ("TDM cérébral", "Radiologie"),
+        ("Angio-TDM pulmonaire", "Radiologie"),
+        ("Scanner thoracique", "Radiologie"),
+        ("IRM thoracique", "Radiologie"),
+        ("Échographie thyroïdienne", "Radiologie"),
+        ("Échographie cervicale", "Radiologie"),
+        ("Échographie rénale + Doppler artères rénales", "Radiologie"),
+        ("Échographie abdominale", "Radiologie"),
+        ("Échographie mammaire", "Radiologie"),
+        ("Échographie ostéomusculaire épaule", "Radiologie"),
+        ("Échographie ostéomusculaire genou gauche", "Radiologie"),
+        ("Échographie ostéomusculaire chevilles", "Radiologie"),
+        ("Radio rachis cervical", "Radiologie"),
+        ("Radio rachis lombo-sacré", "Radiologie"),
+        ("Radio des genoux F+P", "Radiologie"),
+        ("Radio genou gauche", "Radiologie"),
+        ("Radio genou droit", "Radiologie"),
+        ("Radio des deux genoux", "Radiologie"),
+        ("Radio bassin", "Radiologie"),
+        ("Radio bassin + hanche gauche", "Radiologie"),
+        ("Radio pied gauche", "Radiologie"),
+        ("Radio des pieds droit et gauche", "Radiologie"),
+        ("Radio des sinus", "Radiologie"),
+        ("Coloscanner", "Radiologie"),
+        ("Pelvienne", "Radiologie"),
+        # Autre
+        ("ECG 12 dérivations", "Autre"),
+        ("ECG + Avis cardio", "Autre"),
+        ("Holter ECG", "Autre"),
+        ("MAPA (mesure ambulatoire PA)", "Autre"),
+        ("Épreuve d'effort (ECG effort)", "Autre"),
+        ("EFR / Exploration fonctionnelle respiratoire", "Autre"),
+        ("ENMG membre supérieur gauche", "Autre"),
+        ("ENMG membre supérieur droit", "Autre"),
+        ("Fond d'œil", "Autre"),
+        ("Examen ophtalmologique + fond d'œil", "Autre"),
+        ("EEG", "Autre"),
+        ("Consultation spécialisée", "Autre"),
+    ]
+    for i, (name, cat) in enumerate(catalog):
+        conn.execute(
+            """INSERT OR IGNORE INTO bilan_catalog (name, category, sort_order) VALUES (?, ?, ?)""",
+            (name, cat, i),
+        )
+
+
 def init_db() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     UPLOADS.mkdir(parents=True, exist_ok=True)
@@ -2623,6 +2877,9 @@ def init_db() -> None:
     with connect() as conn:
         conn.executescript((BACKEND / "schema.sql").read_text(encoding="utf-8"))
         apply_light_migrations(conn)
+        ensure_patients_fts_triggers(conn)
+        rebuild_medicines_fts(conn)
+        rebuild_patients_fts(conn)
         user_count = conn.execute("SELECT COUNT(*) AS total FROM users").fetchone()["total"]
         if user_count == 0:
             conn.execute(
@@ -2634,6 +2891,7 @@ def init_db() -> None:
         seed_document_templates(conn)
         seed_prescription_templates(conn)
         seed_visit_types(conn)
+        seed_bilan_catalog(conn)
         for key, default_val in DEFAULT_SETTINGS.items():
             existing = conn.execute("SELECT key FROM app_settings WHERE key = ?", (key,)).fetchone()
             if not existing:
@@ -3038,66 +3296,85 @@ def normalized_patient_search_terms(search: str) -> list[str]:
 
 
 @app.get("/api/patients")
-def list_patients(search: str = "", page_size: int = 300, offset: int = 0) -> dict[str, Any]:
-    safe_page_size = min(max(int(page_size or 300), 1), 100000)
+def list_patients(search: str = "", page_size: int = 200, offset: int = 0) -> dict[str, Any]:
+    """List patients with FTS5-accelerated search. Default 200 rows for fast initial load."""
+    safe_page_size = min(max(int(page_size or 200), 1), 10000)
     safe_offset = max(int(offset or 0), 0)
-    terms = normalized_patient_search_terms(search)
-    where_sql = "1 = 1"
-    where_params: list[Any] = []
-    if terms:
-        clauses: list[str] = []
-        for term in terms:
-            like = f"%{term}%"
-            digit_term = re.sub(r"\D+", "", term)
-            clauses.append(
-                """
-                (
-                    lower(coalesce(p.nom, '')) LIKE ?
-                    OR lower(coalesce(p.prenom, '')) LIKE ?
-                    OR lower(coalesce(p.code, '')) LIKE ?
-                    OR lower(coalesce(p.telephone, '')) LIKE ?
-                    OR lower(coalesce(p.adresse, '')) LIKE ?
-                    OR lower(trim(coalesce(p.nom, '') || ' ' || coalesce(p.prenom, ''))) LIKE ?
-                    OR lower(trim(coalesce(p.prenom, '') || ' ' || coalesce(p.nom, ''))) LIKE ?
-                    OR replace(replace(replace(coalesce(p.telephone, ''), ' ', ''), '-', ''), '.', '') LIKE ?
-                )
-                """
-            )
-            where_params.extend([like, like, like, like, like, like, like, f"%{digit_term or term}%"])
-        where_sql = " AND ".join(clauses)
-    phrase = re.sub(r"\s+", " ", str(search or "").strip().lower())
-    phrase_like = f"%{phrase}%" if phrase else "%"
-    sql = """
-        SELECT p.*,
-               COUNT(v.id) AS visit_count,
-               MAX(v.date_visite) AS last_visit
-        FROM patients p
-        LEFT JOIN visits v ON v.patient_id = p.id
-        WHERE {where_sql}
-        GROUP BY p.id
-        ORDER BY
-            CASE
-                WHEN lower(trim(coalesce(p.nom, '') || ' ' || coalesce(p.prenom, ''))) LIKE ? THEN 0
-                WHEN lower(trim(coalesce(p.prenom, '') || ' ' || coalesce(p.nom, ''))) LIKE ? THEN 0
-                WHEN lower(coalesce(p.nom, '')) LIKE ? OR lower(coalesce(p.prenom, '')) LIKE ? THEN 1
-                WHEN lower(coalesce(p.code, '')) LIKE ? THEN 2
-                ELSE 3
-            END,
-            p.updated_at DESC, p.id DESC
-        LIMIT ? OFFSET ?
-    """.format(where_sql=where_sql)
-    order_params = [phrase_like, phrase_like, phrase_like, phrase_like, phrase_like]
+    term = re.sub(r"\s+", " ", str(search or "").strip())
+
     with connect() as conn:
-        rows = rows_to_dicts(conn.execute(sql, (*where_params, *order_params, safe_page_size, safe_offset)).fetchall())
-        total = conn.execute("SELECT COUNT(*) AS total FROM patients").fetchone()["total"]
+        total = conn.execute("SELECT COUNT(*) AS c FROM patients").fetchone()["c"]
+
+        # ── FTS5 fast path ────────────────────────────────────────────────────
+        if term:
+            try:
+                fts_exists = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='patients_fts'"
+                ).fetchone()
+                if fts_exists:
+                    fts_query = " OR ".join(f'"{w}"*' for w in term.split())
+                    id_rows = conn.execute(
+                        f"""SELECT rowid AS id FROM patients_fts
+                            WHERE patients_fts MATCH ?
+                            ORDER BY rank LIMIT ? OFFSET ?""",
+                        (fts_query, safe_page_size, safe_offset),
+                    ).fetchall()
+                    ids = [r["id"] for r in id_rows]
+                    filtered_total = conn.execute(
+                        f"SELECT COUNT(*) AS c FROM patients_fts WHERE patients_fts MATCH ?",
+                        (fts_query,),
+                    ).fetchone()["c"]
+                    if ids:
+                        placeholders = ",".join("?" * len(ids))
+                        rows = rows_to_dicts(conn.execute(
+                            f"""SELECT p.*, COUNT(v.id) AS visit_count, MAX(v.date_visite) AS last_visit
+                                FROM patients p LEFT JOIN visits v ON v.patient_id = p.id
+                                WHERE p.id IN ({placeholders})
+                                GROUP BY p.id ORDER BY p.updated_at DESC, p.id DESC""",
+                            ids,
+                        ).fetchall())
+                        return {"rows": rows, "total": total, "filtered_total": filtered_total,
+                                "page_size": safe_page_size, "offset": safe_offset,
+                                "has_more": safe_offset + len(rows) < filtered_total, "engine": "fts5"}
+            except Exception:
+                pass  # fall through to LIKE
+
+        # ── LIKE fallback ─────────────────────────────────────────────────────
+        terms = normalized_patient_search_terms(term)
+        where_sql = "1 = 1"
+        where_params: list[Any] = []
+        if terms:
+            clauses: list[str] = []
+            for t in terms:
+                like = f"%{t}%"
+                digit_t = re.sub(r"\D+", "", t)
+                clauses.append(
+                    "(lower(coalesce(p.nom,'')) LIKE ? OR lower(coalesce(p.prenom,'')) LIKE ?"
+                    " OR lower(coalesce(p.code,'')) LIKE ? OR lower(coalesce(p.telephone,'')) LIKE ?"
+                    " OR lower(coalesce(p.adresse,'')) LIKE ?"
+                    " OR lower(trim(coalesce(p.nom,'')||' '||coalesce(p.prenom,''))) LIKE ?"
+                    " OR lower(trim(coalesce(p.prenom,'')||' '||coalesce(p.nom,''))) LIKE ?)"
+                )
+                where_params.extend([like, like, like, like, like, like, like])
+            where_sql = " AND ".join(clauses)
+        phrase_like = f"%{term.lower()}%" if term else "%"
+        rows = rows_to_dicts(conn.execute(
+            f"""SELECT p.*, COUNT(v.id) AS visit_count, MAX(v.date_visite) AS last_visit
+                FROM patients p LEFT JOIN visits v ON v.patient_id = p.id
+                WHERE {where_sql}
+                GROUP BY p.id
+                ORDER BY
+                  CASE WHEN lower(trim(coalesce(p.nom,'')||' '||coalesce(p.prenom,''))) LIKE ? THEN 0
+                       WHEN lower(coalesce(p.nom,'')) LIKE ? OR lower(coalesce(p.prenom,'')) LIKE ? THEN 1
+                       ELSE 2 END,
+                  p.updated_at DESC, p.id DESC
+                LIMIT ? OFFSET ?""",
+            (*where_params, phrase_like, phrase_like, phrase_like, safe_page_size, safe_offset),
+        ).fetchall())
         filtered_total = conn.execute(
-            f"""
-            SELECT COUNT(*) AS total
-            FROM patients p
-            WHERE {where_sql}
-            """,
-            where_params,
-        ).fetchone()["total"]
+            f"SELECT COUNT(*) AS c FROM patients p WHERE {where_sql}", where_params
+        ).fetchone()["c"]
+
     return {
         "rows": rows,
         "total": total,
@@ -3105,6 +3382,26 @@ def list_patients(search: str = "", page_size: int = 300, offset: int = 0) -> di
         "page_size": safe_page_size,
         "offset": safe_offset,
         "has_more": safe_offset + len(rows) < filtered_total,
+        "engine": "like",
+    }
+
+
+@app.get("/api/doctor-profile")
+def get_doctor_profile() -> dict[str, Any]:
+    """Return the current doctor/clinic info from settings — used to auto-fill all document headers."""
+    with connect() as conn:
+        rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
+    s = {r["key"]: r["value"] for r in rows}
+    return {
+        "name": s.get("DOCTOR_NAME", ""),
+        "specialty": s.get("DOCTOR_SPECIALTY", ""),
+        "order_number": s.get("DOCTOR_ORDER_NUMBER", ""),
+        "phone": s.get("DOCTOR_PHONE", "") or s.get("CABINET_PHONE", ""),
+        "email": s.get("DOCTOR_EMAIL", ""),
+        "address": s.get("DOCTOR_ADDRESS", "") or s.get("CABINET_ADDRESS", ""),
+        "clinic_name": s.get("CLINIC_NAME", "") or s.get("CABINET_NAME", ""),
+        "clinic_city": s.get("CLINIC_CITY", ""),
+        "logo_b64": s.get("DOCTOR_LOGO_B64", ""),
     }
 
 
@@ -6075,13 +6372,34 @@ class MedicineSearchResult(BaseModel):
 
 
 @app.get("/api/medicines/search")
-def search_medicines(q: str = "", limit: int = 30) -> dict[str, Any]:
-    """Smart medicine autocomplete: search by brand, DCI, substance, CIS/CIP."""
+def search_medicines(q: str = "", limit: int = 100) -> dict[str, Any]:
+    """Smart medicine autocomplete: search by brand, DCI, substance, CIS/CIP, indications.
+    Uses FTS5 for sub-100ms results on 20k+ rows, falls back to LIKE if FTS5 unavailable."""
     term = q.strip()
     if len(term) < 2:
         return {"rows": []}
-    like = f"%{term}%"
+
     with connect() as conn:
+        # Try FTS5 first — instant ranked full-text search
+        try:
+            fts_rows = rows_to_dicts(conn.execute(
+                """SELECT m.id, m.brand_name, m.dci, m.active_substance,
+                          m.dosage_strength, m.form, m.route, m.source,
+                          m.cis_code, m.cip_code, m.indications, m.laboratory
+                   FROM medicines_fts f
+                   JOIN medicines_db m ON m.id = f.rowid
+                   WHERE medicines_fts MATCH ?
+                   ORDER BY rank
+                   LIMIT ?"""  # limit capped at 500,
+                (term + "*", min(limit, 500)),
+            ).fetchall())
+            if fts_rows:
+                return {"rows": fts_rows, "engine": "fts5"}
+        except Exception:
+            pass  # FTS5 not available or not populated — fall through
+
+        # Fallback: LIKE search with ranking
+        like = f"%{term}%"
         rows = rows_to_dicts(conn.execute(
             """SELECT id, brand_name, dci, active_substance, dosage_strength, form, route, source,
                       cis_code, cip_code, indications, laboratory
@@ -6093,10 +6411,156 @@ def search_medicines(q: str = "", limit: int = 30) -> dict[str, Any]:
                       WHEN dci LIKE ? THEN 1
                       ELSE 2 END,
                  brand_name
-               LIMIT ?""",
-            (like, like, like, like, like, like, term + "%", term + "%", limit),
+               LIMIT ?"""  ,
+            (like, like, like, like, like, like, term + "%", term + "%", min(limit, 500)),
         ).fetchall())
-    return {"rows": rows}
+    return {"rows": rows, "engine": "like"}
+
+
+@app.get("/api/gestion-db/medicines")
+def gestion_db_medicines_list(q: str = "", limit: int = 500) -> dict[str, Any]:
+    """Parse GestionMedicale SQL backup → personal medicine list with usage counts."""
+    import re as _re
+
+    sql_path = Path(__file__).parent.parent / "GestionMedicaleDBbackup_02-05-2026.sql"
+    if not sql_path.exists():
+        return {"rows": [], "total": 0, "error": "Fichier SQL introuvable"}
+
+    try:
+        content = sql_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        try:
+            content = sql_path.read_text(encoding="latin-1", errors="replace")
+        except Exception:
+            return {"rows": [], "total": 0, "error": "Impossible de lire le fichier"}
+
+    def _parse_rows(text: str, table: str) -> list:
+        m = _re.search(rf"INSERT INTO `{_re.escape(table)}` VALUES\s*([\s\S]+?);", text)
+        if not m:
+            return []
+        src = m.group(1).strip()
+        rows: list = []
+        row: list = []
+        col: list = []
+        in_str = False
+        i = 0
+        n = len(src)
+        while i < n:
+            c = src[i]
+            if in_str:
+                if c == '\\' and i + 1 < n:
+                    nc = src[i + 1]
+                    col.append("'" if nc == "'" else '\\' if nc == '\\' else '\n' if nc == 'n' else nc)
+                    i += 2
+                    continue
+                if c == "'":
+                    in_str = False
+                    i += 1
+                    continue
+                col.append(c)
+            else:
+                if c == "'":
+                    in_str = True
+                    i += 1
+                    continue
+                if c == ',':
+                    v = ''.join(col)
+                    row.append(None if v == 'NULL' else v)
+                    col = []
+                    i += 1
+                    continue
+                if c == ')':
+                    v = ''.join(col)
+                    row.append(None if v == 'NULL' else v)
+                    if row:
+                        rows.append(row)
+                    row = []
+                    col = []
+                    i += 1
+                    continue
+                if c not in ('(', ' ', '\n', '\r', '\t'):
+                    col.append(c)
+            i += 1
+        return rows
+
+    # Count usage from ordonnancemedicine (col index 3 = MedicineID)
+    usage: dict[int, int] = {}
+    for row in _parse_rows(content, "ordonnancemedicine"):
+        if len(row) >= 4 and row[3] is not None:
+            try:
+                mid = int(str(row[3]).strip())
+                usage[mid] = usage.get(mid, 0) + 1
+            except Exception:
+                pass
+
+    # medicine columns: 0=ID 1=Name 2=Posologie 3=Qsp 4=Favorite 5=QuantiteMedecine
+    #                   6=NombreMedecine 7=DCI 8=Laboratory 9=Description
+    #                   10=DefaultQuantity 11=DefaultMedicineNbre 12=Speciality 13=Therapeutic
+    medicines: list[dict[str, Any]] = []
+    ql = q.strip().lower()
+    for row in _parse_rows(content, "medicine"):
+        if len(row) < 2 or not row[1]:
+            continue
+        try:
+            med_id = int(str(row[0]).strip())
+        except Exception:
+            med_id = 0
+        name = (row[1] or "").strip()
+        if not name:
+            continue
+        posologie = (row[2] or "").strip()
+        dci = (row[7] or "").strip() if len(row) > 7 else ""
+        laboratory = (row[8] or "").strip() if len(row) > 8 else ""
+        specialty = (row[12] or "").strip() if len(row) > 12 else ""
+        try:
+            favorite = bool(int(str(row[4] or "0").strip()))
+        except Exception:
+            favorite = False
+        if ql and ql not in name.lower() and ql not in dci.lower():
+            continue
+        medicines.append({
+            "id": med_id,
+            "name": name,
+            "posologie": posologie,
+            "dci": dci,
+            "laboratory": laboratory,
+            "specialty": specialty,
+            "favorite": favorite,
+            "use_count": usage.get(med_id, 0),
+        })
+
+    medicines.sort(key=lambda m: (-m["use_count"], m["name"]))
+    total = len(medicines)
+    return {
+        "rows": medicines[:limit],
+        "total": total,
+        "max_usage": max((m["use_count"] for m in medicines), default=0),
+    }
+
+
+@app.post("/api/medicines")
+def add_medicine_manual(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Manually add a single medicine to the local database."""
+    brand = (payload.get("brand_name") or "").strip()
+    if not brand:
+        raise HTTPException(status_code=400, detail="brand_name is required")
+    with connect() as conn:
+        existing = conn.execute(
+            "SELECT id FROM medicines_db WHERE lower(brand_name)=lower(?) AND (dci IS NULL OR lower(dci)=lower(?))",
+            (brand, payload.get("dci") or ""),
+        ).fetchone()
+        if existing:
+            return {"id": existing["id"], "created": False}
+        cursor = conn.execute(
+            """INSERT INTO medicines_db
+               (brand_name, dci, active_substance, dosage_strength, form, indications, specialty, source, last_updated, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'manual', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+            (brand, payload.get("dci") or "", payload.get("dci") or "",
+             payload.get("dosage_strength") or "", payload.get("form") or "",
+             payload.get("indications") or "", payload.get("specialty") or ""),
+        )
+        conn.commit()
+        return {"id": cursor.lastrowid, "created": True}
 
 
 @app.get("/api/medicines/stats")
@@ -6107,6 +6571,217 @@ def medicines_stats() -> dict[str, Any]:
             "SELECT source, COUNT(*) AS count FROM medicines_db GROUP BY source"
         ).fetchall())
     return {"total": total, "by_source": by_source, "last_sync": get_setting("MEDICINE_LAST_SYNC")}
+
+
+# ── BDPM import state ─────────────────────────────────────────────────────────
+_bdpm_import_state: dict[str, Any] = {"status": "idle", "imported": 0, "skipped": 0, "total": 0, "error": ""}
+
+
+@app.get("/api/medicines/bdpm-status")
+def bdpm_import_status() -> dict[str, Any]:
+    return _bdpm_import_state
+
+
+@app.post("/api/medicines/import-bdpm")
+def import_bdpm(background_tasks: Any = None) -> dict[str, Any]:
+    """Download and import French BDPM (Base de données publique des médicaments) into medicines_db."""
+    import threading as _threading
+
+    if _bdpm_import_state.get("status") == "running":
+        return {"ok": False, "message": "Import déjà en cours…"}
+
+    def _run() -> None:
+        global _bdpm_import_state
+        _bdpm_import_state = {"status": "running", "imported": 0, "skipped": 0, "total": 0, "error": ""}
+        try:
+            # CIS_bdpm.txt — main product file (tab-separated, latin-1)
+            cis_url = "https://base-donnees-publique.medicaments.gouv.fr/fichier.php?fichier=CIS_bdpm.txt"
+            # CIS_COMPO_bdpm.txt — composition (substance active / DCI)
+            compo_url = "https://base-donnees-publique.medicaments.gouv.fr/fichier.php?fichier=CIS_COMPO_bdpm.txt"
+
+            req_cis = UrlRequest(cis_url, headers={"User-Agent": "MediSmart/2.0"})
+            req_compo = UrlRequest(compo_url, headers={"User-Agent": "MediSmart/2.0"})
+
+            # Download CIS (main names)
+            with urlopen(req_cis, timeout=60) as resp:
+                raw_cis = resp.read().decode("latin-1", errors="replace")
+
+            # Download compo (DCI / substance active)
+            dci_map: dict[str, str] = {}
+            try:
+                with urlopen(req_compo, timeout=60) as resp:
+                    raw_compo = resp.read().decode("latin-1", errors="replace")
+                import io
+                for row in csv.reader(io.StringIO(raw_compo), delimiter="\t"):
+                    # cols: CIS, seq, substance, dosage, unit, nature, link_ref, modified
+                    if len(row) >= 3:
+                        cis_c, substance = row[0].strip(), row[2].strip()
+                        if cis_c and substance:
+                            existing = dci_map.get(cis_c, "")
+                            if substance not in existing:
+                                dci_map[cis_c] = (existing + " + " + substance).lstrip(" + ")
+            except Exception:
+                pass  # DCI lookup is optional
+
+            import io as _io
+            rows_cis = list(csv.reader(_io.StringIO(raw_cis), delimiter="\t"))
+            _bdpm_import_state["total"] = len(rows_cis)
+
+            imported = 0
+            skipped = 0
+            with connect() as conn:
+                # Pre-load existing CIS codes for fast lookup
+                existing_cis: set[str] = {
+                    r[0] for r in conn.execute(
+                        "SELECT cis_code FROM medicines_db WHERE cis_code IS NOT NULL"
+                    ).fetchall()
+                }
+                batch_insert: list[tuple] = []
+                batch_update: list[tuple] = []
+
+                for row in rows_cis:
+                    if len(row) < 7:
+                        skipped += 1
+                        continue
+                    cis_code = row[0].strip()
+                    name = row[1].strip()
+                    form = row[2].strip()
+                    route = row[3].strip()
+
+                    if not name or not cis_code:
+                        skipped += 1
+                        continue
+
+                    dci = dci_map.get(cis_code, "")
+
+                    if cis_code in existing_cis:
+                        batch_update.append((name, dci, form, route, cis_code))
+                    else:
+                        batch_insert.append((cis_code, name, dci, form, route))
+                        existing_cis.add(cis_code)
+                    imported += 1
+                    _bdpm_import_state["imported"] = imported
+                    _bdpm_import_state["skipped"] = skipped
+
+                # Commit in chunks for progress feedback
+                CHUNK = 500
+                for i in range(0, len(batch_insert), CHUNK):
+                    conn.executemany(
+                        "INSERT INTO medicines_db (cis_code, brand_name, dci, form, route, source, specialty) VALUES (?,?,?,?,?,'bdpm','')",
+                        batch_insert[i : i + CHUNK],
+                    )
+                for i in range(0, len(batch_update), CHUNK):
+                    conn.executemany(
+                        "UPDATE medicines_db SET brand_name=?, dci=?, form=?, route=?, source='bdpm' WHERE cis_code=?",
+                        batch_update[i : i + CHUNK],
+                    )
+
+                rebuild_medicines_fts(conn)
+            set_setting("MEDICINE_LAST_SYNC", now_iso())
+            _bdpm_import_state["status"] = "done"
+        except Exception as exc:
+            _bdpm_import_state["status"] = "error"
+            _bdpm_import_state["error"] = str(exc)
+
+    _threading.Thread(target=_run, daemon=True).start()
+    return {"ok": True, "message": "Import BDPM démarré en arrière-plan."}
+
+
+# =====================================================================
+# SPECIALTY SMART-LISTS
+# =====================================================================
+
+@app.get("/api/medicines/specialties")
+def list_specialties() -> dict[str, Any]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT specialty FROM medicines_db WHERE specialty IS NOT NULL AND specialty != '' ORDER BY specialty"
+        ).fetchall()
+    return {"specialties": [r["specialty"] for r in rows]}
+
+
+@app.get("/api/medicines/by-specialty")
+def medicines_by_specialty(specialty: str = "", limit: int = 50) -> dict[str, Any]:
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            """SELECT id, brand_name, dci, active_substance, dosage_strength, form, route, source,
+                      cis_code, cip_code, indications, laboratory
+               FROM medicines_db
+               WHERE lower(specialty) = lower(?)
+               ORDER BY brand_name
+               LIMIT ?""",
+            (specialty, limit),
+        ).fetchall())
+    return {"rows": rows}
+
+
+# =====================================================================
+# FAVORITES & RECENTLY-USED
+# =====================================================================
+
+@app.get("/api/medicines/favorites")
+def list_favorite_medicines() -> dict[str, Any]:
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            """SELECT m.id, m.brand_name, m.dci, m.active_substance, m.dosage_strength, m.form,
+                      m.route, m.source, m.cis_code, m.cip_code, m.indications, m.laboratory
+               FROM favorite_medicines f
+               JOIN medicines_db m ON m.id = f.medicine_id
+               ORDER BY f.sort_order, f.created_at DESC"""
+        ).fetchall())
+    return {"rows": rows}
+
+
+@app.post("/api/medicines/favorites")
+def add_favorite_medicine(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    medicine_id = payload.get("medicine_id")
+    if not medicine_id:
+        raise HTTPException(status_code=400, detail="medicine_id requis")
+    with connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO favorite_medicines (medicine_id) VALUES (?)",
+            (medicine_id,),
+        )
+    return {"ok": True}
+
+
+@app.delete("/api/medicines/favorites/{medicine_id}")
+def remove_favorite_medicine(medicine_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM favorite_medicines WHERE medicine_id = ?", (medicine_id,))
+    return {"ok": True}
+
+
+@app.get("/api/medicines/recent")
+def list_recent_medicines(limit: int = 20) -> dict[str, Any]:
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            """SELECT m.id, m.brand_name, m.dci, m.active_substance, m.dosage_strength, m.form,
+                      m.route, m.source, m.cis_code, m.cip_code, m.indications, m.laboratory
+               FROM recent_medicines r
+               JOIN medicines_db m ON m.id = r.medicine_id
+               ORDER BY r.last_used DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall())
+    return {"rows": rows}
+
+
+def _touch_recent_medicine(conn: sqlite3.Connection, medicine_id: int) -> None:
+    """Bump or insert a medicine into the recently-used list."""
+    existing = conn.execute(
+        "SELECT id FROM recent_medicines WHERE medicine_id = ?", (medicine_id,)
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE recent_medicines SET last_used = ?, use_count = use_count + 1 WHERE medicine_id = ?",
+            (now_iso(), medicine_id),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO recent_medicines (medicine_id, last_used) VALUES (?, ?)",
+            (medicine_id, now_iso()),
+        )
 
 
 @app.get("/api/medicines/{medicine_id}")
@@ -6190,6 +6865,8 @@ def create_prescription_workflow(payload: PrescriptionWorkflowIn) -> dict[str, A
                     1 if item.is_free_text else 0, idx,
                 ),
             )
+            if item.medicine_id:
+                _touch_recent_medicine(conn, item.medicine_id)
     audit("create", "prescriptions", prescription_id, "Ordonnance structuree")
     return {"id": prescription_id, "warnings": check["warnings"], "suggestions": check.get("suggestions", [])}
 
@@ -6627,7 +7304,8 @@ def build_template_variables(patient: dict[str, Any], extra: dict[str, str] | No
         "patient_birth_label": "nee en" if is_female else "ne le",
         "patient_request_label": "l'interessee" if is_female else "l'interesse",
         "date_today": datetime.now().strftime("%d/%m/%Y"),
-        "date_time_short": datetime.now().strftime("%H:%M"),
+        "date_time_short": datetime.now().strftime("%d/%m/%Y"),
+        "date_time_full": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "diagnosis": "",
         "treatment": "",
         "duration": "",
@@ -6865,52 +7543,395 @@ def printable_generated_document(doc_id: int) -> str:
 # =====================================================================
 
 
+def _parse_bdpm_cis(text: str) -> dict[str, dict]:
+    """CIS_bdpm.txt → {cis: {brand_name, form, route, status, laboratory}}"""
+    entries: dict[str, dict] = {}
+    for line in text.strip().split("\n"):
+        parts = line.split("\t")
+        if len(parts) < 4:
+            continue
+        cis = parts[0].strip()
+        if not cis:
+            continue
+        entries[cis] = {
+            "brand_name": parts[1].strip() if len(parts) > 1 else "",
+            "form": parts[2].strip() if len(parts) > 2 else "",
+            "route": parts[3].strip() if len(parts) > 3 else "",
+            "marketing_status": parts[6].strip() if len(parts) > 6 else "",
+            "laboratory": parts[10].strip() if len(parts) > 10 else "",
+        }
+    return entries
+
+
+def _parse_bdpm_compo(text: str) -> dict[str, list[dict]]:
+    """CIS_COMPO_bdpm.txt → {cis: [{substance, dosage}, ...]}"""
+    out: dict[str, list[dict]] = {}
+    for line in text.strip().split("\n"):
+        parts = line.split("\t")
+        if len(parts) < 5:
+            continue
+        cis = parts[0].strip()
+        substance = parts[3].strip() if len(parts) > 3 else ""
+        dosage = parts[4].strip() if len(parts) > 4 else ""
+        if not cis or not substance:
+            continue
+        out.setdefault(cis, []).append({"substance": substance, "dosage": dosage})
+    return out
+
+
 @app.post("/api/medicines/import-bdpm")
 def import_bdpm_from_upload(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
 ) -> dict[str, Any]:
-    """Import BDPM CIS_bdpm.txt tab-separated file into medicines_db.
-    Expected columns: CIS, denomination, form, route, AMM_status, AMM_type, marketing_status, ...
+    """Import BDPM dataset into medicines_db.
+
+    Accepts EITHER:
+    - A single CIS_bdpm.txt (tab-separated)
+    - A ZIP archive containing CIS_bdpm.txt + CIS_COMPO_bdpm.txt (recommended — adds DCI/dosage)
+
+    Safe merge: uses CIS as unique key, updates existing rows without breaking prescriptions.
     """
-    import io
-    content = file.file.read().decode("utf-8", errors="replace")
-    lines = content.strip().split("\n")
+    if not file:
+        raise HTTPException(status_code=400, detail="Fichier BDPM requis (CIS_bdpm.txt ou .zip)")
+
+    import zipfile, io
+    raw = file.file.read()
+    cis_text = ""
+    compo_text = ""
+
+    # Detect ZIP by magic bytes
+    if raw[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                for name in zf.namelist():
+                    lower = name.lower()
+                    if lower.endswith("cis_bdpm.txt") or lower == "cis_bdpm.txt":
+                        cis_text = zf.read(name).decode("utf-8", errors="replace")
+                    elif "compo" in lower and lower.endswith(".txt"):
+                        compo_text = zf.read(name).decode("utf-8", errors="replace")
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=400, detail="Archive ZIP invalide")
+    else:
+        cis_text = raw.decode("utf-8", errors="replace")
+
+    if not cis_text:
+        raise HTTPException(status_code=400, detail="CIS_bdpm.txt introuvable dans le fichier")
+
+    cis_entries = _parse_bdpm_cis(cis_text)
+    compo_entries = _parse_bdpm_compo(compo_text) if compo_text else {}
+
     imported = 0
+    updated = 0
     with connect() as conn:
-        for line in lines:
-            parts = line.split("\t")
-            if len(parts) < 4:
-                continue
-            cis = parts[0].strip()
-            denomination = parts[1].strip() if len(parts) > 1 else ""
-            form = parts[2].strip() if len(parts) > 2 else ""
-            route = parts[3].strip() if len(parts) > 3 else ""
-            status = parts[6].strip() if len(parts) > 6 else ""
-            # Extract DCI from denomination (usually after the comma)
-            dci = ""
-            if "," in denomination:
-                dci = denomination.split(",")[0].strip()
-            elif " " in denomination:
-                # Try to get first meaningful word
-                dci = denomination.split(" ")[0].strip()
-            exists = conn.execute("SELECT id FROM medicines_db WHERE cis_code = ?", (cis,)).fetchone()
-            if exists:
+        for cis, base in cis_entries.items():
+            # Derive DCI + active substance from composition data when available
+            subs = compo_entries.get(cis, [])
+            dci = ", ".join(s["substance"] for s in subs) if subs else ""
+            dosage_strength = ", ".join(f'{s["substance"]} {s["dosage"]}'.strip() for s in subs) if subs else ""
+
+            # Fallback: parse from the commercial name
+            if not dci and base["brand_name"]:
+                name = base["brand_name"]
+                # BDPM commercial names often end with ", <form> <strength>"
+                # Use the first word as a heuristic DCI
+                first_word = name.split(",")[0].split(" ")[0].strip()
+                if len(first_word) > 2:
+                    dci = first_word.title()
+
+            existing = conn.execute("SELECT id FROM medicines_db WHERE cis_code = ?", (cis,)).fetchone()
+            if existing:
                 conn.execute(
-                    """UPDATE medicines_db SET brand_name=?, form=?, route=?, marketing_status=?,
-                       source='bdpm', last_updated=? WHERE cis_code=?""",
-                    (denomination, form, route, status, now_iso(), cis),
+                    """UPDATE medicines_db SET
+                       brand_name = COALESCE(NULLIF(?, ''), brand_name),
+                       dci = COALESCE(NULLIF(?, ''), dci),
+                       active_substance = COALESCE(NULLIF(?, ''), active_substance),
+                       form = COALESCE(NULLIF(?, ''), form),
+                       route = COALESCE(NULLIF(?, ''), route),
+                       dosage_strength = COALESCE(NULLIF(?, ''), dosage_strength),
+                       marketing_status = COALESCE(NULLIF(?, ''), marketing_status),
+                       laboratory = COALESCE(NULLIF(?, ''), laboratory),
+                       source = 'bdpm',
+                       last_updated = ?
+                       WHERE cis_code = ?""",
+                    (
+                        base["brand_name"], dci, dci, base["form"], base["route"],
+                        dosage_strength, base["marketing_status"], base["laboratory"],
+                        now_iso(), cis,
+                    ),
                 )
+                updated += 1
             else:
                 conn.execute(
                     """INSERT INTO medicines_db
-                       (cis_code, brand_name, dci, active_substance, form, route, marketing_status, source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, 'bdpm')""",
-                    (cis, denomination, dci, dci, form, route, status),
+                       (cis_code, brand_name, dci, active_substance, form, route,
+                        dosage_strength, marketing_status, laboratory, source)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'bdpm')""",
+                    (
+                        cis, base["brand_name"], dci, dci, base["form"], base["route"],
+                        dosage_strength, base["marketing_status"], base["laboratory"],
+                    ),
                 )
-            imported += 1
+                imported += 1
+
+            # Persist individual substances in the normalized table (deduped)
+            if subs:
+                med_row = conn.execute("SELECT id FROM medicines_db WHERE cis_code = ?", (cis,)).fetchone()
+                if med_row:
+                    med_id = med_row["id"]
+                    conn.execute("DELETE FROM medicine_substances WHERE medicine_id = ?", (med_id,))
+                    for s in subs:
+                        conn.execute(
+                            "INSERT INTO medicine_substances (medicine_id, substance_name, dosage) VALUES (?, ?, ?)",
+                            (med_id, s["substance"], s["dosage"]),
+                        )
+
         set_setting("MEDICINE_LAST_SYNC", now_iso())
-    audit("import", "medicines_db", None, f"BDPM import: {imported} medicaments")
-    return {"ok": True, "imported": imported}
+        rebuild_medicines_fts(conn)
+
+    audit("import", "medicines_db", None, f"BDPM import: {imported} nouveaux, {updated} mis à jour")
+    return {
+        "ok": True,
+        "imported": imported,
+        "updated": updated,
+        "total_cis": len(cis_entries),
+        "with_composition": len(compo_entries),
+    }
+
+
+@app.post("/api/medicines/auto-download-bdpm")
+def auto_download_bdpm() -> dict[str, Any]:
+    """One-click: download the latest BDPM files from the official public French drug database,
+    then import them. Requires internet. No API key. ~15,000 medications."""
+    import urllib.request
+    BASE_URL = "https://base-donnees-publique.medicaments.gouv.fr/telechargement.php"
+    # Official public exports — both files are plain TXT, UTF-8, tab-separated
+    urls = {
+        "cis": f"{BASE_URL}?fichier=CIS_bdpm.txt",
+        "compo": f"{BASE_URL}?fichier=CIS_COMPO_bdpm.txt",
+    }
+    try:
+        req_cis = urllib.request.Request(urls["cis"], headers={"User-Agent": "MediSmartPro/1.0"})
+        cis_text = urllib.request.urlopen(req_cis, timeout=60).read().decode("utf-8", errors="replace")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Téléchargement BDPM CIS échoué: {e}")
+    try:
+        req_compo = urllib.request.Request(urls["compo"], headers={"User-Agent": "MediSmartPro/1.0"})
+        compo_text = urllib.request.urlopen(req_compo, timeout=60).read().decode("utf-8", errors="replace")
+    except Exception:
+        compo_text = ""  # non-fatal — we can still import CIS alone
+
+    cis_entries = _parse_bdpm_cis(cis_text)
+    compo_entries = _parse_bdpm_compo(compo_text) if compo_text else {}
+
+    if not cis_entries:
+        raise HTTPException(status_code=502, detail="Fichier BDPM vide ou invalide")
+
+    imported = 0
+    updated = 0
+    with connect() as conn:
+        for cis, base in cis_entries.items():
+            subs = compo_entries.get(cis, [])
+            dci = ", ".join(s["substance"] for s in subs) if subs else ""
+            dosage_strength = ", ".join(f'{s["substance"]} {s["dosage"]}'.strip() for s in subs) if subs else ""
+            if not dci and base["brand_name"]:
+                first_word = base["brand_name"].split(",")[0].split(" ")[0].strip()
+                if len(first_word) > 2:
+                    dci = first_word.title()
+
+            existing = conn.execute("SELECT id FROM medicines_db WHERE cis_code = ?", (cis,)).fetchone()
+            if existing:
+                conn.execute(
+                    """UPDATE medicines_db SET
+                       brand_name = COALESCE(NULLIF(?, ''), brand_name),
+                       dci = COALESCE(NULLIF(?, ''), dci),
+                       active_substance = COALESCE(NULLIF(?, ''), active_substance),
+                       form = COALESCE(NULLIF(?, ''), form),
+                       route = COALESCE(NULLIF(?, ''), route),
+                       dosage_strength = COALESCE(NULLIF(?, ''), dosage_strength),
+                       marketing_status = COALESCE(NULLIF(?, ''), marketing_status),
+                       laboratory = COALESCE(NULLIF(?, ''), laboratory),
+                       source = 'bdpm',
+                       last_updated = ?
+                       WHERE cis_code = ?""",
+                    (base["brand_name"], dci, dci, base["form"], base["route"],
+                     dosage_strength, base["marketing_status"], base["laboratory"],
+                     now_iso(), cis),
+                )
+                updated += 1
+            else:
+                conn.execute(
+                    """INSERT INTO medicines_db
+                       (cis_code, brand_name, dci, active_substance, form, route,
+                        dosage_strength, marketing_status, laboratory, source)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'bdpm')""",
+                    (cis, base["brand_name"], dci, dci, base["form"], base["route"],
+                     dosage_strength, base["marketing_status"], base["laboratory"]),
+                )
+                imported += 1
+        set_setting("MEDICINE_LAST_SYNC", now_iso())
+        rebuild_medicines_fts(conn)
+
+    audit("import", "medicines_db", None, f"BDPM auto-download: {imported} nouveaux, {updated} mis à jour")
+    return {
+        "ok": True,
+        "imported": imported,
+        "updated": updated,
+        "total_cis": len(cis_entries),
+        "with_composition": len(compo_entries),
+        "source": "auto-download",
+    }
+
+
+# =====================================================================
+# JSON / CSV BULK IMPORT (custom datasets: Algerian, hospital, etc.)
+# =====================================================================
+
+@app.post("/api/medicines/import-bulk")
+def import_medicines_bulk(
+    file: UploadFile = File(...),
+    format_hint: str = Form("auto"),  # "json", "csv", "auto"
+) -> dict[str, Any]:
+    """Import a JSON or CSV file containing medications into medicines_db.
+
+    JSON format (array of objects):
+    [
+      {
+        "brand_name": "Doliprane",
+        "dci": "Paracetamol",
+        "dosage_strength": "500 mg",
+        "form": "comprimé",
+        "route": "orale",
+        "indications": "Douleur, Fièvre",
+        "laboratory": "Sanofi",
+        "atc_code": "N02BE01"
+      }
+    ]
+
+    CSV format (header row required):
+    brand_name,dci,dosage_strength,form,route,indications,laboratory
+
+    Deduplication: existing entries matched by (brand_name, dosage_strength, form) are updated.
+    """
+    import csv as csv_mod
+    raw = file.file.read()
+    text = raw.decode("utf-8-sig", errors="replace")
+
+    # Auto-detect format
+    fmt = format_hint
+    if fmt == "auto":
+        fmt = "json" if text.strip().startswith(("[", "{")) else "csv"
+
+    meds: list[dict[str, Any]] = []
+    if fmt == "json":
+        try:
+            data = json.loads(text)
+            meds = data if isinstance(data, list) else [data]
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"JSON invalide: {e}")
+    else:
+        reader = csv_mod.DictReader(text.splitlines())
+        meds = list(reader)
+
+    if not meds:
+        raise HTTPException(status_code=400, detail="Aucun médicament trouvé dans le fichier")
+
+    imported = 0
+    updated = 0
+    skipped = 0
+    errors = []
+
+    with connect() as conn:
+        for i, med in enumerate(meds):
+            brand = str(med.get("brand_name", med.get("brand", ""))).strip()
+            if not brand:
+                skipped += 1
+                continue
+
+            dci = str(med.get("dci", med.get("generic_name", med.get("active_substance", "")))).strip()
+            dosage = str(med.get("dosage_strength", med.get("dosage", med.get("strength", "")))).strip()
+            form = str(med.get("form", med.get("dosage_form", ""))).strip()
+            route = str(med.get("route", "")).strip()
+            indications = str(med.get("indications", "")).strip()
+            laboratory = str(med.get("laboratory", med.get("brand", ""))).strip()
+            atc = str(med.get("atc_code", "")).strip()
+            cis = str(med.get("cis_code", "")).strip()
+            cip = str(med.get("cip_code", "")).strip()
+            contraindications = str(med.get("contraindications", "")).strip()
+            interactions = str(med.get("interactions", "")).strip()
+            pregnancy = str(med.get("pregnancy_warnings", "")).strip()
+            breastfeeding = str(med.get("breastfeeding_warnings", "")).strip()
+            renal = str(med.get("renal_precautions", "")).strip()
+            hepatic = str(med.get("hepatic_precautions", "")).strip()
+
+            # Deduplication key: brand + dosage + form
+            dup = conn.execute(
+                """SELECT id FROM medicines_db
+                   WHERE lower(brand_name) = lower(?)
+                     AND lower(COALESCE(dosage_strength, '')) = lower(?)
+                     AND lower(COALESCE(form, '')) = lower(?)""",
+                (brand, dosage, form),
+            ).fetchone()
+
+            try:
+                if dup:
+                    conn.execute(
+                        """UPDATE medicines_db SET
+                           dci = COALESCE(NULLIF(?, ''), dci),
+                           active_substance = COALESCE(NULLIF(?, ''), active_substance),
+                           form = COALESCE(NULLIF(?, ''), form),
+                           route = COALESCE(NULLIF(?, ''), route),
+                           dosage_strength = COALESCE(NULLIF(?, ''), dosage_strength),
+                           indications = COALESCE(NULLIF(?, ''), indications),
+                           contraindications = COALESCE(NULLIF(?, ''), contraindications),
+                           interactions = COALESCE(NULLIF(?, ''), interactions),
+                           pregnancy_warnings = COALESCE(NULLIF(?, ''), pregnancy_warnings),
+                           breastfeeding_warnings = COALESCE(NULLIF(?, ''), breastfeeding_warnings),
+                           renal_precautions = COALESCE(NULLIF(?, ''), renal_precautions),
+                           hepatic_precautions = COALESCE(NULLIF(?, ''), hepatic_precautions),
+                           laboratory = COALESCE(NULLIF(?, ''), laboratory),
+                           cis_code = COALESCE(NULLIF(?, ''), cis_code),
+                           cip_code = COALESCE(NULLIF(?, ''), cip_code),
+                           source = 'bulk-import',
+                           last_updated = ?
+                           WHERE id = ?""",
+                        (
+                            dci, dci, form, route, dosage, indications,
+                            contraindications, interactions, pregnancy, breastfeeding,
+                            renal, hepatic, laboratory, cis, cip,
+                            now_iso(), dup["id"],
+                        ),
+                    )
+                    updated += 1
+                else:
+                    conn.execute(
+                        """INSERT INTO medicines_db
+                           (brand_name, dci, active_substance, form, route, dosage_strength,
+                            indications, contraindications, interactions, pregnancy_warnings,
+                            breastfeeding_warnings, renal_precautions, hepatic_precautions,
+                            laboratory, cis_code, cip_code, source)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'bulk-import')""",
+                        (
+                            brand, dci, dci, form, route, dosage, indications,
+                            contraindications, interactions, pregnancy, breastfeeding,
+                            renal, hepatic, laboratory, cis, cip,
+                        ),
+                    )
+                    imported += 1
+            except Exception as e:
+                errors.append({"row": i + 1, "brand": brand, "error": str(e)})
+
+        # Rebuild FTS5 so new meds are searchable immediately
+        rebuild_medicines_fts(conn)
+
+    audit("import", "medicines_db", None, f"Bulk import: {imported} nouveaux, {updated} mis à jour, {skipped} ignorés")
+    return {
+        "ok": True,
+        "imported": imported,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors[:20],  # cap error list
+        "total_in_file": len(meds),
+    }
 
 
 # =====================================================================
@@ -6944,6 +7965,301 @@ def update_visit_type(vt_id: int, payload: dict[str, Any] = Body(...)) -> dict[s
             (payload.get("name", ""), float(payload.get("price", 0)), int(payload.get("active", 1)), vt_id),
         )
     return {"ok": True}
+
+
+# =====================================================================
+# BILAN (LAB/EXAM ORDER) API
+# =====================================================================
+
+
+@app.post("/api/bilan-catalog")
+def add_bilan_catalog_item(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Manually add a new exam to the bilan catalog."""
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    category = (payload.get("category") or "Autre").strip()
+    with connect() as conn:
+        existing = conn.execute("SELECT id FROM bilan_catalog WHERE lower(name)=lower(?)", (name,)).fetchone()
+        if existing:
+            return {"id": existing["id"], "created": False}
+        cursor = conn.execute(
+            "INSERT INTO bilan_catalog (name, category, active, sort_order) VALUES (?, ?, 1, 999)",
+            (name, category),
+        )
+        conn.commit()
+        return {"id": cursor.lastrowid, "created": True, "name": name, "category": category}
+
+
+@app.get("/api/bilan-catalog")
+def list_bilan_catalog(category: str = "", q: str = "") -> dict[str, Any]:
+    """Return bilan catalog, optionally filtered by category or search."""
+    with connect() as conn:
+        if category and q:
+            rows = rows_to_dicts(conn.execute(
+                "SELECT * FROM bilan_catalog WHERE active=1 AND category=? AND lower(name) LIKE ? ORDER BY sort_order, name",
+                (category, f"%{q.lower()}%"),
+            ).fetchall())
+        elif category:
+            rows = rows_to_dicts(conn.execute(
+                "SELECT * FROM bilan_catalog WHERE active=1 AND category=? ORDER BY sort_order, name",
+                (category,),
+            ).fetchall())
+        elif q:
+            rows = rows_to_dicts(conn.execute(
+                "SELECT * FROM bilan_catalog WHERE active=1 AND lower(name) LIKE ? ORDER BY sort_order, name",
+                (f"%{q.lower()}%",),
+            ).fetchall())
+        else:
+            rows = rows_to_dicts(conn.execute(
+                "SELECT * FROM bilan_catalog WHERE active=1 ORDER BY category, sort_order, name"
+            ).fetchall())
+        cats = [r["category"] for r in conn.execute(
+            "SELECT DISTINCT category FROM bilan_catalog WHERE active=1 ORDER BY category"
+        ).fetchall()]
+    return {"rows": rows, "categories": cats}
+
+
+@app.post("/api/patients/{patient_id}/bilans", status_code=201)
+def create_bilan(patient_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Create a new bilan (exam order) for a patient with selected exam items."""
+    items = payload.get("items", [])  # list of {catalog_id, custom_name}
+    note = payload.get("doctor_note", "")
+    visit_id = payload.get("visit_id")
+    date = payload.get("requested_date", now_iso())
+
+    with connect() as conn:
+        p = conn.execute("SELECT id FROM patients WHERE id=?", (patient_id,)).fetchone()
+        if not p:
+            raise HTTPException(status_code=404, detail="Patient introuvable")
+        cur = conn.execute(
+            "INSERT INTO bilans (patient_id, visit_id, requested_date, doctor_note) VALUES (?,?,?,?)",
+            (patient_id, visit_id, date, note),
+        )
+        bilan_id = cur.lastrowid
+        for it in items:
+            conn.execute(
+                "INSERT INTO bilan_items (bilan_id, catalog_id, custom_name) VALUES (?,?,?)",
+                (bilan_id, it.get("catalog_id"), it.get("custom_name", "")),
+            )
+    audit("create", "bilans", bilan_id, f"Bilan créé pour patient {patient_id}")
+    return {"id": bilan_id, "ok": True}
+
+
+@app.get("/api/patients/{patient_id}/bilans")
+def list_bilans(patient_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        bilans = rows_to_dicts(conn.execute(
+            "SELECT * FROM bilans WHERE patient_id=? ORDER BY requested_date DESC",
+            (patient_id,),
+        ).fetchall())
+        for b in bilans:
+            b["items"] = rows_to_dicts(conn.execute(
+                """SELECT bi.*, bc.name AS catalog_name, bc.category
+                   FROM bilan_items bi
+                   LEFT JOIN bilan_catalog bc ON bc.id = bi.catalog_id
+                   WHERE bi.bilan_id = ?
+                   ORDER BY bi.id""",
+                (b["id"],),
+            ).fetchall())
+    return {"rows": bilans}
+
+
+@app.put("/api/bilans/{bilan_id}")
+def update_bilan(bilan_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE bilans SET doctor_note=?, status=?, updated_at=? WHERE id=?",
+            (payload.get("doctor_note", ""), payload.get("status", "requested"), now_iso(), bilan_id),
+        )
+    return {"ok": True}
+
+
+@app.put("/api/bilan-items/{item_id}/result")
+def update_bilan_item_result(item_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE bilan_items SET result=?, result_date=?, unit=?, reference_range=?, status=? WHERE id=?",
+            (
+                payload.get("result", ""),
+                payload.get("result_date", now_iso()),
+                payload.get("unit", ""),
+                payload.get("reference_range", ""),
+                payload.get("status", "done"),
+                item_id,
+            ),
+        )
+    return {"ok": True}
+
+
+@app.delete("/api/bilans/{bilan_id}")
+def delete_bilan(bilan_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM bilans WHERE id=?", (bilan_id,))
+    return {"ok": True}
+
+
+@app.get("/api/bilans/{bilan_id}/print")
+def print_bilan(bilan_id: int) -> dict[str, Any]:
+    """Return bilan data + doctor header (JSON) for client-side rendering."""
+    with connect() as conn:
+        bilan = conn.execute(
+            """SELECT b.*, p.nom, p.prenom, p.date_naissance, p.sexe, p.telephone, p.age
+               FROM bilans b JOIN patients p ON p.id = b.patient_id
+               WHERE b.id=?""",
+            (bilan_id,),
+        ).fetchone()
+        if not bilan:
+            raise HTTPException(status_code=404, detail="Bilan introuvable")
+        items = rows_to_dicts(conn.execute(
+            """SELECT bi.*, bc.name AS catalog_name, bc.category
+               FROM bilan_items bi
+               LEFT JOIN bilan_catalog bc ON bc.id = bi.catalog_id
+               WHERE bi.bilan_id = ? ORDER BY bc.category, bi.id""",
+            (bilan_id,),
+        ).fetchall())
+        s = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM app_settings").fetchall()}
+    doctor = {
+        "name": s.get("DOCTOR_NAME", ""),
+        "specialty": s.get("DOCTOR_SPECIALTY", ""),
+        "order_number": s.get("DOCTOR_ORDER_NUMBER", ""),
+        "phone": s.get("DOCTOR_PHONE", "") or s.get("CABINET_PHONE", ""),
+        "address": s.get("DOCTOR_ADDRESS", "") or s.get("CABINET_ADDRESS", ""),
+        "clinic_name": s.get("CLINIC_NAME", "") or s.get("CABINET_NAME", ""),
+        "clinic_city": s.get("CLINIC_CITY", ""),
+        "logo_b64": s.get("DOCTOR_LOGO_B64", ""),
+    }
+    return {"bilan": dict(bilan), "items": items, "doctor": doctor}
+
+
+@app.get("/api/bilans/{bilan_id}/preview", response_class=HTMLResponse)
+def preview_bilan_html(bilan_id: int) -> HTMLResponse:
+    """Return a fully self-contained printable HTML page for the bilan (like ordonnance preview)."""
+    with connect() as conn:
+        bilan = conn.execute(
+            """SELECT b.*, p.nom, p.prenom, p.date_naissance, p.sexe, p.telephone, p.age
+               FROM bilans b JOIN patients p ON p.id = b.patient_id WHERE b.id=?""",
+            (bilan_id,),
+        ).fetchone()
+        if not bilan:
+            raise HTTPException(status_code=404, detail="Bilan introuvable")
+        items = rows_to_dicts(conn.execute(
+            """SELECT bi.*, bc.name AS catalog_name, bc.category
+               FROM bilan_items bi
+               LEFT JOIN bilan_catalog bc ON bc.id = bi.catalog_id
+               WHERE bi.bilan_id = ? ORDER BY bc.category, bi.id""",
+            (bilan_id,),
+        ).fetchall())
+        s = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM app_settings").fetchall()}
+
+    b = dict(bilan)
+    doc_name = s.get("DOCTOR_NAME", "Dr. Médecin")
+    doc_spec = s.get("DOCTOR_SPECIALTY", "")
+    doc_num = s.get("DOCTOR_ORDER_NUMBER", "")
+    doc_phone = s.get("DOCTOR_PHONE", "") or s.get("CABINET_PHONE", "")
+    doc_addr = s.get("DOCTOR_ADDRESS", "") or s.get("CABINET_ADDRESS", "")
+    clinic = s.get("CLINIC_NAME", "") or s.get("CABINET_NAME", "")
+    city = s.get("CLINIC_CITY", "")
+    logo_b64 = s.get("DOCTOR_LOGO_B64", "")
+
+    import html as ht
+    today = datetime.now().strftime("%d/%m/%Y")
+    pat_name = ht.escape(f"{b.get('nom','').upper()} {b.get('prenom','')}")
+    pat_dob = ht.escape(str(b.get("date_naissance", "") or "")[:10])
+    pat_age = ht.escape(str(b.get("age", "") or ""))
+    pat_sex = ht.escape(str(b.get("sexe", "") or ""))
+
+    # Group items by category
+    by_cat: dict[str, list[str]] = {}
+    for it in items:
+        cat = it.get("category") or "Autre"
+        name = ht.escape(it.get("catalog_name") or it.get("custom_name") or "")
+        by_cat.setdefault(cat, []).append(name)
+
+    cat_colors = {"Biologie": "#1d4ed8", "Radiologie": "#7c3aed", "Autre": "#059669"}
+    cat_html = ""
+    for cat, names in by_cat.items():
+        color = cat_colors.get(cat, "#374151")
+        items_html = "".join(f"<li>{n}</li>" for n in names)
+        cat_html += f"""
+        <div class="cat-block">
+          <div class="cat-title" style="color:{color};">{ht.escape(cat)}</div>
+          <ul>{items_html}</ul>
+        </div>"""
+
+    note_html = ""
+    if b.get("doctor_note"):
+        note_html = f'<div class="note">Note: {ht.escape(str(b["doctor_note"]))}</div>'
+
+    logo_html = ""
+    if logo_b64:
+        logo_html = f'<img src="{logo_b64}" style="max-height:70px;max-width:80px;object-fit:contain;" alt="logo"/>'
+
+    doc_addr_full = doc_addr + (f" — {city}" if city else "")
+
+    html_page = f"""<!DOCTYPE html>
+<html lang="fr"><head>
+<meta charset="utf-8">
+<title>Bilan — {pat_name}</title>
+<style>
+  *{{box-sizing:border-box;margin:0;padding:0}}
+  body{{font-family:'Times New Roman',serif;font-size:12pt;color:#111;background:#fff}}
+  @page{{size:A4;margin:12mm 15mm}}
+  .hdr-tbl{{width:100%;border-collapse:collapse;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:4px}}
+  .hdr-tbl td{{vertical-align:top;padding:0 6px}}
+  .hdr-left{{width:38%}}
+  .hdr-center{{width:24%;text-align:center;vertical-align:middle}}
+  .hdr-right{{width:38%;text-align:right}}
+  .doc-name{{font-size:13.5pt;font-weight:bold;margin-bottom:2px}}
+  .doc-spec{{font-size:10.5pt;font-weight:bold}}
+  .doc-ordre{{font-size:9pt;margin-top:3px}}
+  .hdr-right .rl{{font-size:10.5pt;margin:2px 0}}
+  .sep{{border:none;border-top:2px solid #000;margin:6px 0 10px}}
+  .title-line{{font-size:13pt;font-weight:700;text-align:center;margin:12px 0 10px;letter-spacing:.3px}}
+  .cat-block{{margin-bottom:12px}}
+  .cat-title{{font-size:10.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;color:#374151}}
+  ul{{list-style:none;padding-left:0}}
+  li{{padding:4px 0 4px 18px;border-bottom:1px solid #f3f4f6;position:relative;font-size:11.5pt}}
+  li::before{{content:"☐";position:absolute;left:0;color:#9ca3af}}
+  .note{{margin-top:14px;font-size:10pt;color:#6b7280;border-top:1px dashed #d1d5db;padding-top:8px}}
+  .ftr{{margin-top:30px;border-top:1.5px solid #000;padding-top:7px;font-size:9pt;text-align:center;color:#374151}}
+  .no-print{{display:block;text-align:center;margin:16px 0}}
+  .print-btn{{padding:8px 24px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}}
+  @media print{{.no-print{{display:none!important}}body{{padding:0}}}}
+</style>
+</head><body>
+
+<table class="hdr-tbl"><tr>
+  <td class="hdr-left">
+    <div class="doc-name">{ht.escape(doc_name)}</div>
+    <div class="doc-spec">{ht.escape(doc_spec)}</div>
+    {('<div class="doc-ordre">N&deg; d\'ordre des m&eacute;decins : ' + ht.escape(doc_num) + '</div>') if doc_num else ''}
+  </td>
+  <td class="hdr-center">{logo_html}</td>
+  <td class="hdr-right">
+    <div class="rl">Date&nbsp;: <strong>{today}</strong></div>
+    <div class="rl">Nom&nbsp;: <strong>{ht.escape(b.get('nom','').upper())}</strong></div>
+    <div class="rl">Pr&eacute;nom&nbsp;: <strong>{ht.escape(str(b.get('prenom','') or ''))}</strong></div>
+    {('<div class="rl">Age&nbsp;: <strong>' + ht.escape(pat_age) + ' ans</strong></div>') if pat_age else ''}
+    {('<div class="rl">N&eacute;(e) le&nbsp;: <strong>' + ht.escape(pat_dob) + '</strong></div>') if pat_dob and not pat_age else ''}
+  </td>
+</tr></table>
+<hr class="sep"/>
+
+<div class="title-line">Demande d&rsquo;examens compl&eacute;mentaires</div>
+
+{cat_html}
+{note_html}
+
+<div class="ftr">
+  {('&#9990; ' + ht.escape(doc_phone) + ' &nbsp;&nbsp;') if doc_phone else ''}
+  {('&#9993; ' + ht.escape(s.get('DOCTOR_EMAIL','') or '')) if s.get('DOCTOR_EMAIL') else ''}
+  {('&nbsp;&nbsp;&#9492; ' + ht.escape(doc_addr_full)) if doc_addr_full else ''}
+</div>
+
+<div class="no-print"><button class="print-btn" onclick="window.print()">&#128438; Imprimer / Enregistrer PDF</button></div>
+</body></html>"""
+    return HTMLResponse(content=html_page)
 
 
 # =====================================================================
@@ -7422,6 +8738,51 @@ def setup_complete(body: dict):
         conn.commit()
     data_mode = body.get("data_mode", "new")
     return {"ok": True, "speciality": body.get("speciality", "cardiologie"), "data_mode": data_mode}
+
+
+@app.post("/api/setup/restore")
+async def setup_restore(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Restore a SQLite backup file as the main database."""
+    import shutil
+    from pathlib import Path
+
+    fname = Path(file.filename or "").name
+    if not fname.lower().endswith(".sqlite3"):
+        raise HTTPException(400, "Fichier invalide. Veuillez sélectionner une sauvegarde .sqlite3.")
+
+    tmp_path = DATA / f"_restore_tmp_{secrets.token_hex(6)}.sqlite3"
+    try:
+        content = await file.read()
+        tmp_path.write_bytes(content)
+        # Validate SQLite format
+        try:
+            with sqlite3.connect(str(tmp_path)) as test_conn:
+                test_conn.execute("SELECT name FROM sqlite_master WHERE type='table' LIMIT 1")
+        except Exception:
+            raise HTTPException(400, "Le fichier n'est pas une base SQLite valide.")
+
+        # Backup current DB before overwrite
+        if DB_PATH.is_file():
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pre_restore = BACKUPS / f"pre_restore_{ts}.sqlite3"
+            BACKUPS.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(DB_PATH, pre_restore)
+
+        # Replace DB
+        shutil.copy2(tmp_path, DB_PATH)
+
+        # Re-run migrations to bring schema up to date
+        init_db()
+
+        # Mark setup complete
+        with connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO app_settings(key,value) VALUES(?,?)", ("SETUP_COMPLETE", "1"))
+            conn.commit()
+
+        return {"ok": True, "message": "Base restaurée avec succès.", "tables_checked": True}
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
 
 
 @app.get("/api/speciality/config")

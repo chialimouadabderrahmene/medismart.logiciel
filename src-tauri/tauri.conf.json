@@ -43,7 +43,8 @@
     },
     "resources": [
       "../backend/**/*",
-      "../data/cardiologie.sqlite3"
+      "../data/cardiologie.sqlite3",
+      "binaries/cardio-backend/**/*"
     ]
   }
 }

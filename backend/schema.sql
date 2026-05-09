@@ -379,6 +379,7 @@ CREATE TABLE IF NOT EXISTS medicines_db (
   hepatic_precautions TEXT,
   rcp_link TEXT,
   rcp_text TEXT,
+  specialty TEXT,
   source TEXT NOT NULL DEFAULT 'manual',
   last_updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -388,6 +389,32 @@ CREATE INDEX IF NOT EXISTS idx_medicines_brand ON medicines_db(brand_name COLLAT
 CREATE INDEX IF NOT EXISTS idx_medicines_dci ON medicines_db(dci COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_medicines_cis ON medicines_db(cis_code);
 CREATE INDEX IF NOT EXISTS idx_medicines_substance ON medicines_db(active_substance COLLATE NOCASE);
+
+-- FTS5 full-text search virtual table for instant medication search (sub-100ms even with 20k+ rows)
+CREATE VIRTUAL TABLE IF NOT EXISTS medicines_fts USING fts5(
+  brand_name, dci, active_substance, indications,
+  content='medicines_db', content_rowid='id'
+);
+
+-- Trigger: keep FTS index in sync on INSERT
+CREATE TRIGGER IF NOT EXISTS medicines_fts_insert AFTER INSERT ON medicines_db BEGIN
+  INSERT INTO medicines_fts(rowid, brand_name, dci, active_substance, indications)
+  VALUES (new.id, new.brand_name, new.dci, new.active_substance, new.indications);
+END;
+
+-- Trigger: keep FTS index in sync on UPDATE
+CREATE TRIGGER IF NOT EXISTS medicines_fts_update AFTER UPDATE ON medicines_db BEGIN
+  INSERT INTO medicines_fts(medicines_fts, rowid, brand_name, dci, active_substance, indications)
+  VALUES ('delete', old.id, old.brand_name, old.dci, old.active_substance, old.indications);
+  INSERT INTO medicines_fts(rowid, brand_name, dci, active_substance, indications)
+  VALUES (new.id, new.brand_name, new.dci, new.active_substance, new.indications);
+END;
+
+-- Trigger: keep FTS index in sync on DELETE
+CREATE TRIGGER IF NOT EXISTS medicines_fts_delete AFTER DELETE ON medicines_db BEGIN
+  INSERT INTO medicines_fts(medicines_fts, rowid, brand_name, dci, active_substance, indications)
+  VALUES ('delete', old.id, old.brand_name, old.dci, old.active_substance, old.indications);
+END;
 
 CREATE TABLE IF NOT EXISTS medicine_substances (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -415,6 +442,28 @@ CREATE TABLE IF NOT EXISTS medicine_contraindications (
   condition_name TEXT NOT NULL,
   severity TEXT NOT NULL DEFAULT 'absolute',
   description TEXT,
+  FOREIGN KEY (medicine_id) REFERENCES medicines_db(id) ON DELETE CASCADE
+);
+
+-- Favorite medications per doctor
+CREATE TABLE IF NOT EXISTS favorite_medicines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  medicine_id INTEGER NOT NULL,
+  doctor_id INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(medicine_id, doctor_id),
+  FOREIGN KEY (medicine_id) REFERENCES medicines_db(id) ON DELETE CASCADE
+);
+
+-- Recently-used medications per doctor (auto-populated on prescription)
+CREATE TABLE IF NOT EXISTS recent_medicines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  medicine_id INTEGER NOT NULL,
+  doctor_id INTEGER NOT NULL DEFAULT 1,
+  last_used TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  use_count INTEGER NOT NULL DEFAULT 1,
+  UNIQUE(medicine_id, doctor_id),
   FOREIGN KEY (medicine_id) REFERENCES medicines_db(id) ON DELETE CASCADE
 );
 
@@ -514,3 +563,73 @@ CREATE TABLE IF NOT EXISTS visit_types (
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============================================================
+-- BILAN (medical exam / lab-order) MODULE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS bilan_catalog (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  category TEXT NOT NULL DEFAULT 'Autre',  -- Biologie | Radiologie | Autre
+  description TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS bilans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  patient_id INTEGER NOT NULL,
+  visit_id INTEGER,
+  requested_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  doctor_note TEXT,
+  status TEXT NOT NULL DEFAULT 'requested',  -- requested | done | cancelled
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+  FOREIGN KEY (visit_id) REFERENCES visits(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS bilan_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bilan_id INTEGER NOT NULL,
+  catalog_id INTEGER,
+  custom_name TEXT,
+  result TEXT,
+  result_date TEXT,
+  unit TEXT,
+  reference_range TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending | done | abnormal
+  FOREIGN KEY (bilan_id) REFERENCES bilans(id) ON DELETE CASCADE,
+  FOREIGN KEY (catalog_id) REFERENCES bilan_catalog(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bilans_patient ON bilans(patient_id, requested_date DESC);
+CREATE INDEX IF NOT EXISTS idx_bilan_items_bilan ON bilan_items(bilan_id);
+CREATE INDEX IF NOT EXISTS idx_bilan_catalog_cat ON bilan_catalog(category, active);
+
+-- ============================================================
+-- PATIENT FTS5 — fast name/phone search on 10k+ patients
+-- ============================================================
+CREATE VIRTUAL TABLE IF NOT EXISTS patients_fts USING fts5(
+  nom, prenom, telephone, code, adresse,
+  content='patients', content_rowid='id'
+);
+
+CREATE TRIGGER IF NOT EXISTS patients_fts_insert AFTER INSERT ON patients BEGIN
+  INSERT INTO patients_fts(rowid, nom, prenom, telephone, code, adresse)
+  VALUES (new.id, new.nom, new.prenom, new.telephone, new.code, new.adresse);
+END;
+
+CREATE TRIGGER IF NOT EXISTS patients_fts_update AFTER UPDATE ON patients BEGIN
+  INSERT INTO patients_fts(patients_fts, rowid, nom, prenom, telephone, code, adresse)
+  VALUES ('delete', old.id, old.nom, old.prenom, old.telephone, old.code, old.adresse);
+  INSERT INTO patients_fts(rowid, nom, prenom, telephone, code, adresse)
+  VALUES (new.id, new.nom, new.prenom, new.telephone, new.code, new.adresse);
+END;
+
+CREATE TRIGGER IF NOT EXISTS patients_fts_delete AFTER DELETE ON patients BEGIN
+  INSERT INTO patients_fts(patients_fts, rowid, nom, prenom, telephone, code, adresse)
+  VALUES ('delete', old.id, old.nom, old.prenom, old.telephone, old.code, old.adresse);
+END;

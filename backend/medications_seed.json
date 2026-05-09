@@ -3,45 +3,85 @@
     "name": "ASPEGIC 100",
     "dci": "Acide acetylsalicylique",
     "class_name": "Antiagregant plaquettaire",
-    "indication": "Prevention secondaire cardiovasculaire selon contexte clinique",
+    "indication": "Prevention secondaire cardiovasculaire",
     "dosage": "1 sachet par jour",
-    "default_dose": "1 sachet par jour",
-    "contraindications": ["allergie aspirine", "ulcere actif", "hemorragie"],
-    "interactions": ["rivaroxaban", "apixaban", "warfarine", "sintrom"],
-    "warnings": ["Risque hemorragique avec anticoagulants."]
+    "default_dose": "1 sachet/j",
+    "contraindications": [
+      "allergie aspirine",
+      "ulcere actif",
+      "hemorragie"
+    ],
+    "interactions": [
+      "rivaroxaban",
+      "apixaban",
+      "warfarine",
+      "sintrom"
+    ],
+    "warnings": [
+      "Risque hemorragique avec anticoagulants."
+    ]
   },
   {
     "name": "SINTROM",
     "dci": "Acenocoumarol",
     "class_name": "Anticoagulant AVK",
     "indication": "Anticoagulation orale avec surveillance INR",
-    "dosage": "Selon INR et protocole cardiologue",
+    "dosage": "Selon INR et protocole",
     "default_dose": "Selon INR",
-    "contraindications": ["grossesse", "hemorragie active", "insuffisance hepatique severe"],
-    "interactions": ["aspirine", "amiodarone", "anti-inflammatoire"],
-    "warnings": ["Surveiller INR, signes de saignement, alimentation riche en vitamine K."]
+    "contraindications": [
+      "grossesse",
+      "hemorragie active",
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "aspirine",
+      "amiodarone",
+      "anti-inflammatoire"
+    ],
+    "warnings": [
+      "Surveiller INR, signes de saignement."
+    ]
   },
   {
     "name": "CORDARONE",
     "dci": "Amiodarone",
     "class_name": "Antiarythmique",
-    "indication": "Troubles du rythme selectionnes sous controle cardiologique",
-    "dosage": "Selon protocole cardiologue",
-    "default_dose": "Selon protocole cardiologue",
-    "contraindications": ["bradycardie severe", "bloc auriculo-ventriculaire", "dysthyroidie non controlee"],
-    "interactions": ["sintrom", "digoxine", "statine"],
-    "warnings": ["Verifier TSH, foie, poumon, ECG et interactions AVK."]
+    "indication": "Troubles du rythme selectionnes",
+    "dosage": "Selon protocole",
+    "default_dose": "Selon protocole",
+    "contraindications": [
+      "bradycardie severe",
+      "bloc AV",
+      "dysthyroidie"
+    ],
+    "interactions": [
+      "sintrom",
+      "digoxine",
+      "statine"
+    ],
+    "warnings": [
+      "Verifier TSH, foie, poumon, ECG."
+    ]
   },
   {
     "name": "TAHOR 40",
     "dci": "Atorvastatine",
     "class_name": "Statine",
-    "indication": "Dyslipidemie et prevention cardiovasculaire",
+    "indication": "Dyslipidemie et prevention CV",
     "dosage": "1 cp le soir",
     "default_dose": "1 cp le soir",
-    "contraindications": ["maladie hepatique active", "grossesse"],
-    "interactions": ["amiodarone", "macrolide", "azole"],
-    "warnings": ["Surveiller transaminases et douleurs musculaires."]
+    "contraindications": [
+      "maladie hepatique active",
+      "grossesse"
+    ],
+    "interactions": [
+      "amiodarone",
+      "macrolide",
+      "azole"
+    ],
+    "warnings": [
+      "Surveiller transaminases et douleurs musculaires."
+    ]
   },
   {
     "name": "EXFORGE",
@@ -49,394 +89,4025 @@
     "class_name": "Antihypertenseur",
     "indication": "Hypertension arterielle",
     "dosage": "1 cp par jour",
-    "default_dose": "1 cp par jour",
-    "contraindications": ["grossesse", "hyperkaliemie", "stenose arteres renales"],
-    "interactions": ["spironolactone", "potassium", "ains"],
-    "warnings": ["Surveiller TA, creatinine et kaliemie."]
+    "default_dose": "1 cp/j",
+    "contraindications": [
+      "grossesse",
+      "hyperkaliemie",
+      "stenose arteres renales"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "ains"
+    ],
+    "warnings": [
+      "Surveiller TA, creatinine et kaliemie."
+    ]
   },
   {
     "name": "XARELTO",
     "dci": "Rivaroxaban",
     "class_name": "Anticoagulant oral direct",
-    "indication": "Anticoagulation selon indication et fonction renale",
-    "dosage": "Selon indication, age, poids et clairance",
+    "indication": "Anticoagulation selon indication",
+    "dosage": "Selon indication, age, poids",
     "default_dose": "Selon indication et fonction renale",
-    "contraindications": ["hemorragie active", "insuffisance renale severe", "valve mecanique"],
-    "interactions": ["aspirine", "clopidogrel", "anti-inflammatoire"],
-    "warnings": ["Adapter a l'age, poids, creatinine, risque hemorragique."]
+    "contraindications": [
+      "hemorragie active",
+      "insuffisance renale severe",
+      "valve mecanique"
+    ],
+    "interactions": [
+      "aspirine",
+      "clopidogrel",
+      "anti-inflammatoire"
+    ],
+    "warnings": [
+      "Adapter a age, poids, creatinine."
+    ]
   },
   {
     "name": "COVERSYL",
     "dci": "Perindopril",
     "class_name": "IEC",
-    "indication": "Hypertension, coronaropathie stable, insuffisance cardiaque selon profil",
-    "dosage": "2.5 a 10 mg/j selon TA et fonction renale",
+    "indication": "HTA, coronaropathie, IC",
+    "dosage": "2.5 a 10 mg/j",
     "default_dose": "5 mg/j puis titration",
-    "contraindications": ["grossesse", "angioedeme", "hyperkaliemie severe", "stenose arteres renales"],
-    "interactions": ["spironolactone", "potassium", "ains", "lithium"],
-    "warnings": ["Surveiller creatinine et kaliemie apres introduction ou titration."]
+    "contraindications": [
+      "grossesse",
+      "angioedeme",
+      "hyperkaliemie severe"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "ains",
+      "lithium"
+    ],
+    "warnings": [
+      "Surveiller creatinine et kaliemie."
+    ]
   },
   {
     "name": "BISOPROLOL",
     "dci": "Bisoprolol",
     "class_name": "Beta-bloquant",
-    "indication": "HTA, coronaropathie, insuffisance cardiaque stable, controle frequence",
-    "dosage": "1.25 a 10 mg/j selon FC, TA et indication",
+    "indication": "HTA, coronaropathie, IC stable",
+    "dosage": "1.25 a 10 mg/j",
     "default_dose": "2.5 mg/j puis titration",
-    "contraindications": ["bradycardie severe", "bloc auriculo-ventriculaire", "asthme severe", "choc cardiogenique"],
-    "interactions": ["verapamil", "diltiazem", "digoxine", "amiodarone"],
-    "warnings": ["Verifier FC, BAV, asthme/BPCO et signes de decompensation."]
+    "contraindications": [
+      "bradycardie severe",
+      "bloc AV",
+      "asthme severe",
+      "choc cardiogenique"
+    ],
+    "interactions": [
+      "verapamil",
+      "diltiazem",
+      "digoxine",
+      "amiodarone"
+    ],
+    "warnings": [
+      "Verifier FC, BAV, asthme/BPCO."
+    ]
   },
   {
     "name": "CRESTOR",
     "dci": "Rosuvastatine",
     "class_name": "Statine",
-    "indication": "Dyslipidemie, prevention primaire/secondaire cardiovasculaire",
-    "dosage": "5 a 40 mg/j selon LDL cible et risque",
+    "indication": "Dyslipidemie, prevention CV",
+    "dosage": "5 a 40 mg/j",
     "default_dose": "10 a 20 mg/j",
-    "contraindications": ["maladie hepatique active", "grossesse", "myopathie active"],
-    "interactions": ["ciclosporine", "macrolide", "fibrate"],
-    "warnings": ["Surveiller transaminases et douleurs musculaires; prudence insuffisance renale severe."]
+    "contraindications": [
+      "maladie hepatique active",
+      "grossesse",
+      "myopathie active"
+    ],
+    "interactions": [
+      "ciclosporine",
+      "macrolide",
+      "fibrate"
+    ],
+    "warnings": [
+      "Surveiller transaminases et douleurs musculaires."
+    ]
   },
   {
     "name": "ELIQUIS",
     "dci": "Apixaban",
     "class_name": "Anticoagulant oral direct",
-    "indication": "Prevention AVC dans ACFA non valvulaire selon score et contexte",
-    "dosage": "Selon indication, age, poids et creatinine",
-    "default_dose": "5 mg x 2/j ou adaptation selon criteres",
-    "contraindications": ["hemorragie active", "valve mecanique", "insuffisance hepatique severe"],
-    "interactions": ["aspirine", "clopidogrel", "anti-inflammatoire", "azole", "macrolide"],
-    "warnings": ["Adapter selon age, poids, creatinine; surveiller risque hemorragique."]
+    "indication": "Prevention AVC dans ACFA non valvulaire",
+    "dosage": "Selon indication, age, poids",
+    "default_dose": "5 mg x 2/j ou adaptation",
+    "contraindications": [
+      "hemorragie active",
+      "valve mecanique",
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "aspirine",
+      "clopidogrel",
+      "anti-inflammatoire",
+      "azole",
+      "macrolide"
+    ],
+    "warnings": [
+      "Adapter selon age, poids, creatinine."
+    ]
   },
   {
     "name": "LASILIX",
     "dci": "Furosemide",
-    "class_name": "Diuretique de l'anse",
-    "indication": "Congestion, insuffisance cardiaque, oedemes",
-    "dosage": "Selon congestion, poids, diurese et ionogramme",
-    "default_dose": "20 a 40 mg/j puis adaptation",
-    "contraindications": ["deshydratation severe", "hypokaliemie severe", "anurie"],
-    "interactions": ["digoxine", "ains", "iec", "ara2"],
-    "warnings": ["Surveiller poids, creatinine, sodium, potassium et TA."]
+    "class_name": "Diuretique de l anse",
+    "indication": "Congestion, IC, oedemes",
+    "dosage": "Selon congestion, poids, diurese",
+    "default_dose": "20 a 40 mg/j",
+    "contraindications": [
+      "deshydratation severe",
+      "hypokaliemie severe",
+      "anurie"
+    ],
+    "interactions": [
+      "digoxine",
+      "ains",
+      "iec",
+      "ara2"
+    ],
+    "warnings": [
+      "Surveiller poids, creatinine, sodium, potassium."
+    ]
   },
   {
     "name": "ALDACTONE",
     "dci": "Spironolactone",
     "class_name": "Antagoniste mineralocorticoide",
-    "indication": "Insuffisance cardiaque, HTA resistante selon fonction renale",
-    "dosage": "12.5 a 50 mg/j selon kaliemie et DFG",
+    "indication": "IC, HTA resistante",
+    "dosage": "12.5 a 50 mg/j",
     "default_dose": "25 mg/j",
-    "contraindications": ["hyperkaliemie", "insuffisance renale severe", "grossesse"],
-    "interactions": ["iec", "ara2", "potassium", "ains"],
-    "warnings": ["Verifier creatinine et kaliemie avant et apres introduction."]
+    "contraindications": [
+      "hyperkaliemie",
+      "insuffisance renale severe",
+      "grossesse"
+    ],
+    "interactions": [
+      "iec",
+      "ara2",
+      "potassium",
+      "ains"
+    ],
+    "warnings": [
+      "Verifier creatinine et kaliemie."
+    ]
   },
   {
     "name": "PLAVIX",
     "dci": "Clopidogrel",
     "class_name": "Antiagregant plaquettaire",
-    "indication": "Prevention secondaire, syndrome coronarien, post-stent selon protocole",
-    "dosage": "75 mg/j selon indication",
+    "indication": "Prevention secondaire, post-stent",
+    "dosage": "75 mg/j",
     "default_dose": "75 mg/j",
-    "contraindications": ["hemorragie active", "insuffisance hepatique severe"],
-    "interactions": ["aspirine", "rivaroxaban", "apixaban", "warfarine", "omeprazole"],
-    "warnings": ["Surveiller risque hemorragique et duree de double antiagregation."]
+    "contraindications": [
+      "hemorragie active",
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "aspirine",
+      "rivaroxaban",
+      "apixaban",
+      "warfarine",
+      "omeprazole"
+    ],
+    "warnings": [
+      "Surveiller risque hemorragique et DAPT."
+    ]
   },
   {
     "name": "KARDEGIC 75",
     "dci": "Acide acetylsalicylique",
     "class_name": "Antiagregant plaquettaire",
-    "indication": "Prevention cardiovasculaire selon indication medicale",
+    "indication": "Prevention CV",
     "dosage": "1 sachet par jour",
     "default_dose": "1 sachet/j",
-    "contraindications": ["allergie aspirine", "ulcere actif", "hemorragie"],
-    "interactions": ["anticoagulant", "clopidogrel", "ains", "corticoide"],
-    "warnings": ["Evaluer risque digestif et hemorragique."]
+    "contraindications": [
+      "allergie aspirine",
+      "ulcere actif",
+      "hemorragie"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "clopidogrel",
+      "ains",
+      "corticoide"
+    ],
+    "warnings": [
+      "Evaluer risque digestif et hemorragique."
+    ]
   },
   {
     "name": "BRILIQUE",
     "dci": "Ticagrelor",
-    "class_name": "Antiagregant plaquettaire P2Y12",
-    "indication": "Syndrome coronarien aigu et post-stent selon protocole",
-    "dosage": "Selon protocole cardiologue",
-    "default_dose": "90 mg x 2/j selon indication",
-    "contraindications": ["hemorragie active", "antecedent hemorragie intracranienne", "insuffisance hepatique severe"],
-    "interactions": ["anticoagulant", "aspirine forte dose", "macrolide", "azole"],
-    "warnings": ["Surveiller dyspnee, bradycardie et saignements."]
+    "class_name": "Antiagregant P2Y12",
+    "indication": "SCA et post-stent",
+    "dosage": "Selon protocole",
+    "default_dose": "90 mg x 2/j",
+    "contraindications": [
+      "hemorragie active",
+      "hemorragie intracranienne",
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "aspirine forte dose",
+      "macrolide",
+      "azole"
+    ],
+    "warnings": [
+      "Surveiller dyspnee, bradycardie et saignements."
+    ]
   },
   {
     "name": "LOVENOX",
     "dci": "Enoxaparine",
     "class_name": "HBPM",
-    "indication": "Anticoagulation injectable selon indication et fonction renale",
-    "dosage": "Selon poids, indication et clairance creatinine",
+    "indication": "Anticoagulation injectable",
+    "dosage": "Selon poids, indication et clairance",
     "default_dose": "Selon protocole",
-    "contraindications": ["hemorragie active", "thrombopenie induite heparine", "insuffisance renale severe"],
-    "interactions": ["aspirine", "clopidogrel", "ains", "anticoagulant oral"],
-    "warnings": ["Adapter a la fonction renale et surveiller plaquettes/saignements."]
+    "contraindications": [
+      "hemorragie active",
+      "TIH",
+      "insuffisance renale severe"
+    ],
+    "interactions": [
+      "aspirine",
+      "clopidogrel",
+      "ains",
+      "anticoagulant oral"
+    ],
+    "warnings": [
+      "Adapter a fonction renale et surveiller plaquettes."
+    ]
   },
   {
     "name": "AMLOR",
     "dci": "Amlodipine",
-    "class_name": "Inhibiteur calcique dihydropyridine",
-    "indication": "Hypertension arterielle, angor",
-    "dosage": "5 a 10 mg/j selon TA",
+    "class_name": "Inhibiteur calcique",
+    "indication": "HTA, angor",
+    "dosage": "5 a 10 mg/j",
     "default_dose": "5 mg/j",
-    "contraindications": ["hypotension severe", "choc", "stenose aortique severe"],
-    "interactions": ["simvastatine", "diltiazem", "macrolide", "azole"],
-    "warnings": ["Surveiller oedemes, hypotension et tolerance."]
+    "contraindications": [
+      "hypotension severe",
+      "choc",
+      "stenose aortique severe"
+    ],
+    "interactions": [
+      "simvastatine",
+      "diltiazem",
+      "macrolide",
+      "azole"
+    ],
+    "warnings": [
+      "Surveiller oedemes, hypotension et tolerance."
+    ]
   },
   {
     "name": "LOXEN",
     "dci": "Nicardipine",
     "class_name": "Inhibiteur calcique",
-    "indication": "Hypertension arterielle selon forme et contexte",
+    "indication": "HTA",
     "dosage": "Selon forme et TA",
     "default_dose": "Selon prescription",
-    "contraindications": ["hypotension severe", "choc cardiogenique", "stenose aortique severe"],
-    "interactions": ["beta-bloquant", "diltiazem", "macrolide", "azole"],
-    "warnings": ["Surveiller TA, frequence cardiaque et oedemes."]
+    "contraindications": [
+      "hypotension severe",
+      "choc cardiogenique"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "diltiazem",
+      "macrolide"
+    ],
+    "warnings": [
+      "Surveiller TA, FC et oedemes."
+    ]
   },
   {
     "name": "TAREG",
     "dci": "Valsartan",
     "class_name": "ARA2",
-    "indication": "HTA, insuffisance cardiaque, post-infarctus selon indication",
-    "dosage": "40 a 320 mg/j selon TA et indication",
+    "indication": "HTA, IC, post-infarctus",
+    "dosage": "40 a 320 mg/j",
     "default_dose": "80 mg/j puis titration",
-    "contraindications": ["grossesse", "hyperkaliemie severe", "stenose arteres renales"],
-    "interactions": ["spironolactone", "potassium", "ains", "iec"],
-    "warnings": ["Surveiller creatinine et kaliemie."]
+    "contraindications": [
+      "grossesse",
+      "hyperkaliemie severe",
+      "stenose arteres renales"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "ains",
+      "iec"
+    ],
+    "warnings": [
+      "Surveiller creatinine et kaliemie."
+    ]
   },
   {
     "name": "COZAAR",
     "dci": "Losartan",
     "class_name": "ARA2",
-    "indication": "Hypertension arterielle, nephroprotection selon profil",
-    "dosage": "50 a 100 mg/j selon TA",
+    "indication": "HTA, nephroprotection",
+    "dosage": "50 a 100 mg/j",
     "default_dose": "50 mg/j",
-    "contraindications": ["grossesse", "hyperkaliemie severe", "stenose arteres renales"],
-    "interactions": ["spironolactone", "potassium", "ains", "lithium"],
-    "warnings": ["Controler creatinine et kaliemie apres introduction."]
+    "contraindications": [
+      "grossesse",
+      "hyperkaliemie severe",
+      "stenose arteres renales"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "ains",
+      "lithium"
+    ],
+    "warnings": [
+      "Controler creatinine et kaliemie."
+    ]
   },
   {
     "name": "APROVEL",
     "dci": "Irbesartan",
     "class_name": "ARA2",
-    "indication": "Hypertension arterielle, atteinte renale diabetique selon contexte",
+    "indication": "HTA, atteinte renale diabetique",
     "dosage": "150 a 300 mg/j",
     "default_dose": "150 mg/j",
-    "contraindications": ["grossesse", "hyperkaliemie severe", "stenose arteres renales"],
-    "interactions": ["spironolactone", "potassium", "ains", "lithium"],
-    "warnings": ["Surveiller TA, creatinine et kaliemie."]
+    "contraindications": [
+      "grossesse",
+      "hyperkaliemie severe",
+      "stenose arteres renales"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "ains",
+      "lithium"
+    ],
+    "warnings": [
+      "Surveiller TA, creatinine et kaliemie."
+    ]
   },
   {
     "name": "MICARDIS",
     "dci": "Telmisartan",
     "class_name": "ARA2",
-    "indication": "Hypertension arterielle, prevention CV selon profil",
+    "indication": "HTA, prevention CV",
     "dosage": "40 a 80 mg/j",
     "default_dose": "40 mg/j",
-    "contraindications": ["grossesse", "cholestase", "hyperkaliemie severe"],
-    "interactions": ["spironolactone", "potassium", "ains", "digoxine"],
-    "warnings": ["Surveiller kaliemie, creatinine et hypotension."]
+    "contraindications": [
+      "grossesse",
+      "cholestase",
+      "hyperkaliemie severe"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "ains",
+      "digoxine"
+    ],
+    "warnings": [
+      "Surveiller kaliemie, creatinine et hypotension."
+    ]
   },
   {
     "name": "TRIATEC",
     "dci": "Ramipril",
     "class_name": "IEC",
-    "indication": "HTA, prevention cardiovasculaire, insuffisance cardiaque selon profil",
-    "dosage": "1.25 a 10 mg/j selon TA et tolerance",
+    "indication": "HTA, prevention CV, IC",
+    "dosage": "1.25 a 10 mg/j",
     "default_dose": "2.5 mg/j puis titration",
-    "contraindications": ["grossesse", "angioedeme", "hyperkaliemie severe", "stenose arteres renales"],
-    "interactions": ["spironolactone", "potassium", "ains", "lithium"],
-    "warnings": ["Surveiller toux, creatinine, kaliemie et TA."]
+    "contraindications": [
+      "grossesse",
+      "angioedeme",
+      "hyperkaliemie severe"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "ains",
+      "lithium"
+    ],
+    "warnings": [
+      "Surveiller toux, creatinine, kaliemie et TA."
+    ]
   },
   {
     "name": "ZESTRIL",
     "dci": "Lisinopril",
     "class_name": "IEC",
-    "indication": "Hypertension, insuffisance cardiaque, post-infarctus selon indication",
-    "dosage": "5 a 40 mg/j selon TA",
+    "indication": "HTA, IC, post-infarctus",
+    "dosage": "5 a 40 mg/j",
     "default_dose": "10 mg/j puis adaptation",
-    "contraindications": ["grossesse", "angioedeme", "hyperkaliemie severe"],
-    "interactions": ["spironolactone", "potassium", "ains", "lithium"],
-    "warnings": ["Controle creatinine/kaliemie apres introduction."]
+    "contraindications": [
+      "grossesse",
+      "angioedeme",
+      "hyperkaliemie severe"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "ains",
+      "lithium"
+    ],
+    "warnings": [
+      "Controle creatinine/kaliemie apres introduction."
+    ]
   },
   {
     "name": "LERCAN",
     "dci": "Lercanidipine",
-    "class_name": "Inhibiteur calcique dihydropyridine",
-    "indication": "Hypertension arterielle",
+    "class_name": "Inhibiteur calcique",
+    "indication": "HTA",
     "dosage": "10 a 20 mg/j",
     "default_dose": "10 mg/j",
-    "contraindications": ["insuffisance cardiaque non controlee", "angor instable", "insuffisance hepatique severe"],
-    "interactions": ["macrolide", "azole", "jus de pamplemousse", "ciclosporine"],
-    "warnings": ["Surveiller oedemes, cephalees et interactions CYP3A4."]
+    "contraindications": [
+      "insuffisance cardiaque non controlee",
+      "angor instable"
+    ],
+    "interactions": [
+      "macrolide",
+      "azole",
+      "jus de pamplemousse",
+      "ciclosporine"
+    ],
+    "warnings": [
+      "Surveiller oedemes, cephalees et interactions CYP3A4."
+    ]
   },
   {
     "name": "NEBILET",
     "dci": "Nebivolol",
     "class_name": "Beta-bloquant",
-    "indication": "Hypertension, insuffisance cardiaque stable selon profil",
-    "dosage": "1.25 a 5 mg/j selon indication",
-    "default_dose": "5 mg/j ou titration progressive",
-    "contraindications": ["bradycardie severe", "bloc auriculo-ventriculaire", "choc cardiogenique", "asthme severe"],
-    "interactions": ["verapamil", "diltiazem", "amiodarone", "digoxine"],
-    "warnings": ["Verifier FC, TA, BAV et signes de decompensation."]
+    "indication": "HTA, IC stable",
+    "dosage": "1.25 a 5 mg/j",
+    "default_dose": "5 mg/j ou titration",
+    "contraindications": [
+      "bradycardie severe",
+      "bloc AV",
+      "choc cardiogenique",
+      "asthme severe"
+    ],
+    "interactions": [
+      "verapamil",
+      "diltiazem",
+      "amiodarone",
+      "digoxine"
+    ],
+    "warnings": [
+      "Verifier FC, TA, BAV et signes de decompensation."
+    ]
   },
   {
     "name": "TENORMINE",
     "dci": "Atenolol",
     "class_name": "Beta-bloquant",
-    "indication": "HTA, angor, controle frequence selon contexte",
-    "dosage": "25 a 100 mg/j selon FC et TA",
+    "indication": "HTA, angor, controle frequence",
+    "dosage": "25 a 100 mg/j",
     "default_dose": "50 mg/j",
-    "contraindications": ["bradycardie severe", "bloc auriculo-ventriculaire", "asthme severe", "choc cardiogenique"],
-    "interactions": ["verapamil", "diltiazem", "digoxine", "amiodarone"],
-    "warnings": ["Adapter si insuffisance renale; surveiller FC et TA."]
+    "contraindications": [
+      "bradycardie severe",
+      "bloc AV",
+      "asthme severe",
+      "choc cardiogenique"
+    ],
+    "interactions": [
+      "verapamil",
+      "diltiazem",
+      "digoxine",
+      "amiodarone"
+    ],
+    "warnings": [
+      "Adapter si insuffisance renale; surveiller FC et TA."
+    ]
   },
   {
     "name": "CONCOR",
     "dci": "Bisoprolol",
     "class_name": "Beta-bloquant",
-    "indication": "HTA, coronaropathie, insuffisance cardiaque stable",
-    "dosage": "1.25 a 10 mg/j selon indication",
+    "indication": "HTA, coronaropathie, IC stable",
+    "dosage": "1.25 a 10 mg/j",
     "default_dose": "2.5 mg/j puis titration",
-    "contraindications": ["bradycardie severe", "bloc auriculo-ventriculaire", "asthme severe"],
-    "interactions": ["verapamil", "diltiazem", "digoxine", "amiodarone"],
-    "warnings": ["Surveiller FC, TA et tolerance a l'effort."]
+    "contraindications": [
+      "bradycardie severe",
+      "bloc AV",
+      "asthme severe"
+    ],
+    "interactions": [
+      "verapamil",
+      "diltiazem",
+      "digoxine",
+      "amiodarone"
+    ],
+    "warnings": [
+      "Surveiller FC, TA et tolerance a l effort."
+    ]
   },
   {
     "name": "ENTRESTO",
     "dci": "Sacubitril / Valsartan",
     "class_name": "ARNI",
-    "indication": "Insuffisance cardiaque a fraction d'ejection reduite selon recommandations",
-    "dosage": "Titration progressive selon TA, DFG et kaliemie",
+    "indication": "IC a FEV reduite",
+    "dosage": "Titration progressive",
     "default_dose": "Selon protocole IC",
-    "contraindications": ["grossesse", "angioedeme", "association IEC", "hyperkaliemie severe"],
-    "interactions": ["iec", "spironolactone", "potassium", "ains"],
-    "warnings": ["Respecter delai apres IEC; surveiller TA, creatinine et kaliemie."]
+    "contraindications": [
+      "grossesse",
+      "angioedeme",
+      "association IEC",
+      "hyperkaliemie severe"
+    ],
+    "interactions": [
+      "iec",
+      "spironolactone",
+      "potassium",
+      "ains"
+    ],
+    "warnings": [
+      "Respecter delai apres IEC; surveiller TA, creatinine et kaliemie."
+    ]
   },
   {
     "name": "FORXIGA",
     "dci": "Dapagliflozine",
     "class_name": "Inhibiteur SGLT2",
-    "indication": "Diabete type 2, insuffisance cardiaque, maladie renale selon profil",
+    "indication": "Diabete type 2, IC, maladie renale",
     "dosage": "10 mg/j selon indication et DFG",
     "default_dose": "10 mg/j",
-    "contraindications": ["acidocetose", "deshydratation severe", "infection genitale severe active"],
-    "interactions": ["diuretique", "insuline", "sulfamide hypoglycemiant"],
-    "warnings": ["Surveiller hydratation, infections genitales, DFG et risque d'acidocetose."]
+    "contraindications": [
+      "acidocetose",
+      "deshydratation severe",
+      "infection genitale severe"
+    ],
+    "interactions": [
+      "diuretique",
+      "insuline",
+      "sulfamide hypoglycemiant"
+    ],
+    "warnings": [
+      "Surveiller hydratation, infections genitales, DFG."
+    ]
   },
   {
     "name": "JARDIANCE",
     "dci": "Empagliflozine",
     "class_name": "Inhibiteur SGLT2",
-    "indication": "Diabete type 2, insuffisance cardiaque, risque cardio-renal selon profil",
-    "dosage": "10 mg/j selon indication et DFG",
+    "indication": "Diabete type 2, IC, risque cardio-renal",
+    "dosage": "10 mg/j",
     "default_dose": "10 mg/j",
-    "contraindications": ["acidocetose", "deshydratation severe", "infection genitale severe active"],
-    "interactions": ["diuretique", "insuline", "sulfamide hypoglycemiant"],
-    "warnings": ["Surveiller DFG, volume, infections et signes d'acidocetose."]
+    "contraindications": [
+      "acidocetose",
+      "deshydratation severe",
+      "infection genitale severe"
+    ],
+    "interactions": [
+      "diuretique",
+      "insuline",
+      "sulfamide hypoglycemiant"
+    ],
+    "warnings": [
+      "Surveiller DFG, volume, infections et acidocetose."
+    ]
   },
   {
     "name": "CORALAN",
     "dci": "Ivabradine",
     "class_name": "Inhibiteur If",
-    "indication": "Insuffisance cardiaque ou angor selectionne en rythme sinusal selon FC",
+    "indication": "IC ou angor selectionne en rythme sinusal",
     "dosage": "Selon FC et indication",
     "default_dose": "5 mg x 2/j puis adaptation",
-    "contraindications": ["bradycardie", "fibrillation auriculaire", "choc cardiogenique", "grossesse"],
-    "interactions": ["verapamil", "diltiazem", "macrolide", "azole"],
-    "warnings": ["Verifier rythme sinusal, FC, phosphene et FA."]
+    "contraindications": [
+      "bradycardie",
+      "fibrillation auriculaire",
+      "choc cardiogenique",
+      "grossesse"
+    ],
+    "interactions": [
+      "verapamil",
+      "diltiazem",
+      "macrolide",
+      "azole"
+    ],
+    "warnings": [
+      "Verifier rythme sinusal, FC, phosphene et FA."
+    ]
   },
   {
     "name": "LANOXIN",
     "dci": "Digoxine",
     "class_name": "Digitalique",
-    "indication": "Controle frequence ou insuffisance cardiaque selectionnee selon contexte",
-    "dosage": "Selon age, poids, DFG et digoxinemie",
+    "indication": "Controle frequence ou IC selectionnee",
+    "dosage": "Selon age, poids, DFG",
     "default_dose": "Dose individualisee",
-    "contraindications": ["bloc auriculo-ventriculaire", "bradycardie severe", "troubles du rythme ventriculaire"],
-    "interactions": ["amiodarone", "verapamil", "diltiazem", "diuretique", "macrolide"],
-    "warnings": ["Surveiller kaliemie, DFG, ECG et signes de surdosage."]
+    "contraindications": [
+      "bloc AV",
+      "bradycardie severe",
+      "troubles du rythme ventriculaire"
+    ],
+    "interactions": [
+      "amiodarone",
+      "verapamil",
+      "diltiazem",
+      "diuretique",
+      "macrolide"
+    ],
+    "warnings": [
+      "Surveiller kaliemie, DFG, ECG et signes de surdosage."
+    ]
   },
   {
     "name": "ISOPTINE",
     "dci": "Verapamil",
-    "class_name": "Inhibiteur calcique non dihydropyridine",
-    "indication": "Angor, HTA, controle frequence selon indication",
+    "class_name": "Inhibiteur calcique non DHP",
+    "indication": "Angor, HTA, controle frequence",
     "dosage": "Selon forme et indication",
     "default_dose": "Selon prescription",
-    "contraindications": ["insuffisance cardiaque systolique", "bloc auriculo-ventriculaire", "bradycardie severe"],
-    "interactions": ["beta-bloquant", "digoxine", "ivabradine", "statine"],
-    "warnings": ["Risque bradycardie/BAV; prudence association beta-bloquant."]
+    "contraindications": [
+      "insuffisance cardiaque systolique",
+      "bloc AV",
+      "bradycardie severe"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "digoxine",
+      "ivabradine",
+      "statine"
+    ],
+    "warnings": [
+      "Risque bradycardie/BAV; prudence association beta-bloquant."
+    ]
   },
   {
     "name": "TILDIEM",
     "dci": "Diltiazem",
-    "class_name": "Inhibiteur calcique non dihydropyridine",
-    "indication": "Angor, HTA, controle frequence selon indication",
+    "class_name": "Inhibiteur calcique non DHP",
+    "indication": "Angor, HTA, controle frequence",
     "dosage": "Selon forme et indication",
     "default_dose": "Selon prescription",
-    "contraindications": ["insuffisance cardiaque systolique", "bloc auriculo-ventriculaire", "bradycardie severe"],
-    "interactions": ["beta-bloquant", "digoxine", "ivabradine", "statine"],
-    "warnings": ["Surveiller FC, PR, TA et interactions."]
+    "contraindications": [
+      "insuffisance cardiaque systolique",
+      "bloc AV",
+      "bradycardie severe"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "digoxine",
+      "ivabradine",
+      "statine"
+    ],
+    "warnings": [
+      "Surveiller FC, PR, TA et interactions."
+    ]
   },
   {
     "name": "FLECAINE",
     "dci": "Flecainide",
     "class_name": "Antiarythmique classe Ic",
-    "indication": "Troubles du rythme supraventriculaires selectionnes sous controle cardiologique",
-    "dosage": "Selon protocole cardiologue",
+    "indication": "Troubles du rythme supraventriculaires",
+    "dosage": "Selon protocole",
     "default_dose": "Dose individualisee",
-    "contraindications": ["cardiopathie structurelle significative", "infarctus ancien", "bloc de conduction"],
-    "interactions": ["amiodarone", "beta-bloquant", "digoxine", "antidepresseur tricyclique"],
-    "warnings": ["ECG obligatoire; surveiller QRS, PR et pro-arythmie."]
+    "contraindications": [
+      "cardiopathie structurelle",
+      "infarctus ancien",
+      "bloc de conduction"
+    ],
+    "interactions": [
+      "amiodarone",
+      "beta-bloquant",
+      "digoxine",
+      "antidepresseur tricyclique"
+    ],
+    "warnings": [
+      "ECG obligatoire; surveiller QRS, PR et pro-arythmie."
+    ]
   },
   {
     "name": "RISORDAN",
-    "dci": "Dinitrate d'isosorbide",
+    "dci": "Dinitrate d isosorbide",
     "class_name": "Derive nitrate",
-    "indication": "Angor, ischemie selon contexte",
+    "indication": "Angor, ischemie",
     "dosage": "Selon forme, symptomes et TA",
     "default_dose": "Selon prescription",
-    "contraindications": ["hypotension severe", "prise inhibiteur PDE5", "choc"],
-    "interactions": ["sildenafil", "tadalafil", "vardenafil", "antihypertenseur"],
-    "warnings": ["Informer sur hypotension, cephalees et intervalle libre."]
+    "contraindications": [
+      "hypotension severe",
+      "prise inhibiteur PDE5",
+      "choc"
+    ],
+    "interactions": [
+      "sildenafil",
+      "tadalafil",
+      "vardenafil",
+      "antihypertenseur"
+    ],
+    "warnings": [
+      "Informer sur hypotension, cephalees et intervalle libre."
+    ]
   },
   {
     "name": "NITRIDERM",
     "dci": "Trinitrine",
     "class_name": "Derive nitrate",
-    "indication": "Prevention angor selon strategie cardiologique",
-    "dosage": "Patch selon prescription avec intervalle libre",
+    "indication": "Prevention angor",
+    "dosage": "Patch selon prescription",
     "default_dose": "Selon prescription",
-    "contraindications": ["hypotension severe", "prise inhibiteur PDE5", "choc"],
-    "interactions": ["sildenafil", "tadalafil", "vardenafil", "antihypertenseur"],
-    "warnings": ["Respecter intervalle libre; surveiller hypotension et cephalees."]
+    "contraindications": [
+      "hypotension severe",
+      "prise inhibiteur PDE5",
+      "choc"
+    ],
+    "interactions": [
+      "sildenafil",
+      "tadalafil",
+      "vardenafil",
+      "antihypertenseur"
+    ],
+    "warnings": [
+      "Respecter intervalle libre; surveiller hypotension."
+    ]
   },
   {
     "name": "EUPRESSYL",
     "dci": "Urapidil",
-    "class_name": "Antihypertenseur alpha-1 bloquant",
-    "indication": "Hypertension selon contexte et forme disponible",
+    "class_name": "Antihypertenseur alpha-1",
+    "indication": "Hypertension",
     "dosage": "Selon protocole et TA",
     "default_dose": "Selon prescription",
-    "contraindications": ["hypotension", "stenose aortique severe"],
-    "interactions": ["antihypertenseur", "alcool", "alpha-bloquant"],
-    "warnings": ["Surveiller hypotension orthostatique et TA."]
+    "contraindications": [
+      "hypotension",
+      "stenose aortique severe"
+    ],
+    "interactions": [
+      "antihypertenseur",
+      "alcool",
+      "alpha-bloquant"
+    ],
+    "warnings": [
+      "Surveiller hypotension orthostatique et TA."
+    ]
   },
   {
     "name": "EZETROL",
     "dci": "Ezetimibe",
     "class_name": "Hypolipemiant",
-    "indication": "Dyslipidemie en association ou intolerance statine selon LDL cible",
+    "indication": "Dyslipidemie en association ou intolerance statine",
     "dosage": "10 mg/j",
     "default_dose": "10 mg/j",
-    "contraindications": ["maladie hepatique active si association statine", "grossesse si association statine"],
-    "interactions": ["ciclosporine", "fibrate", "cholestyramine", "statine"],
-    "warnings": ["Surveiller bilan hepatique si association statine."]
+    "contraindications": [
+      "maladie hepatique active si association statine",
+      "grossesse si association statine"
+    ],
+    "interactions": [
+      "ciclosporine",
+      "fibrate",
+      "cholestyramine",
+      "statine"
+    ],
+    "warnings": [
+      "Surveiller bilan hepatique si association statine."
+    ]
+  },
+  {
+    "name": "DOLIPRANE 500",
+    "dci": "Paracetamol",
+    "class_name": "Analgesique antipyretique",
+    "indication": "Douleur legere a moderee, fievre",
+    "dosage": "1 a 2 cp x 3/j",
+    "default_dose": "1 g x 3-4/j max 4g/j",
+    "contraindications": [
+      "insuffisance hepatique severe",
+      "allergie paracetamol"
+    ],
+    "interactions": [
+      "warfarine",
+      "isoniazide",
+      "alcool"
+    ],
+    "warnings": [
+      "Respecter dose max; prudence insuffisance hepatique et alcool."
+    ]
+  },
+  {
+    "name": "DOLIPRANE 1000",
+    "dci": "Paracetamol",
+    "class_name": "Analgesique antipyretique",
+    "indication": "Douleur, fievre",
+    "dosage": "1 cp x 3/j",
+    "default_dose": "1 g x 3-4/j max 4g/j",
+    "contraindications": [
+      "insuffisance hepatique severe",
+      "allergie paracetamol"
+    ],
+    "interactions": [
+      "warfarine",
+      "isoniazide",
+      "alcool"
+    ],
+    "warnings": [
+      "Respecter dose max; prudence insuffisance hepatique."
+    ]
+  },
+  {
+    "name": "EFFERALGAN 500",
+    "dci": "Paracetamol",
+    "class_name": "Analgesique antipyretique",
+    "indication": "Douleur, fievre",
+    "dosage": "1 a 2 cp x 3/j",
+    "default_dose": "1 g x 3-4/j max 4g/j",
+    "contraindications": [
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "warfarine",
+      "alcool"
+    ],
+    "warnings": [
+      "Respecter dose max journaliere."
+    ]
+  },
+  {
+    "name": "NUROFEN 400",
+    "dci": "Ibuprofene",
+    "class_name": "AINS",
+    "indication": "Douleur inflammatoire, fievre",
+    "dosage": "1 cp x 3/j au cours des repas",
+    "default_dose": "400 mg x 3/j",
+    "contraindications": [
+      "allergie AINS",
+      "ulcere gastroduodenal actif",
+      "insuffisance renale severe",
+      "grossesse 3e trimestre"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "aspirine",
+      "iec",
+      "lithium",
+      "methotrexate"
+    ],
+    "warnings": [
+      "Risque GI, renal, cardio; prudence grossesse et age > 65 ans."
+    ]
+  },
+  {
+    "name": "ADVIL 200",
+    "dci": "Ibuprofene",
+    "class_name": "AINS",
+    "indication": "Douleur, fievre",
+    "dosage": "1 a 2 cp x 3/j",
+    "default_dose": "200-400 mg x 3/j",
+    "contraindications": [
+      "allergie AINS",
+      "ulcere",
+      "insuffisance renale severe",
+      "grossesse 3e trimestre"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "aspirine",
+      "iec",
+      "methotrexate"
+    ],
+    "warnings": [
+      "Risque GI, renal, cardio; court terme prefere."
+    ]
+  },
+  {
+    "name": "DICLOFENAC 50",
+    "dci": "Diclofenac",
+    "class_name": "AINS",
+    "indication": "Douleur inflammatoire intense",
+    "dosage": "1 cp x 2-3/j",
+    "default_dose": "50 mg x 2-3/j",
+    "contraindications": [
+      "allergie AINS",
+      "ulcere actif",
+      "insuffisance cardiaque severe",
+      "grossesse 3e trimestre"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "aspirine",
+      "iec",
+      "lithium",
+      "methotrexate",
+      "digoxine"
+    ],
+    "warnings": [
+      "Risque CV, GI, renal; eviter en cas d antecedent cardiaque."
+    ]
+  },
+  {
+    "name": "TRAMADOL 50",
+    "dci": "Tramadol",
+    "class_name": "Analgesique opioide faible",
+    "indication": "Douleur moderee a severe",
+    "dosage": "1 a 2 cp x 3-4/j",
+    "default_dose": "50-100 mg x 3-4/j max 400 mg/j",
+    "contraindications": [
+      "insuffisance respiratoire severe",
+      "epilepsie non controlee",
+      "intoxication alcoolique aigue"
+    ],
+    "interactions": [
+      "antidepresseur ISRS/IRSNA",
+      "carbamazepine",
+      "warfarine"
+    ],
+    "warnings": [
+      "Risque dependance, somnolence, convulsions; ne pas associer ISRS."
+    ]
+  },
+  {
+    "name": "CODEINE 30",
+    "dci": "Codeine",
+    "class_name": "Antitussif antalgique",
+    "indication": "Toux seche, douleur moderee",
+    "dosage": "1 cp x 3/j",
+    "default_dose": "30 mg x 3/j",
+    "contraindications": [
+      "insuffisance respiratoire",
+      "depression du SNC",
+      "grossesse 3e trimestre",
+      "allaitement"
+    ],
+    "interactions": [
+      "antidepresseur",
+      "antihistaminique sedatif",
+      "alcool"
+    ],
+    "warnings": [
+      "Risque somnolence, constipation, dependance; prudence metabolisme CYP2D6."
+    ]
+  },
+  {
+    "name": "MORPHINE SR 30",
+    "dci": "Morphine",
+    "class_name": "Analgesique opioide fort",
+    "indication": "Douleur cancereuse ou severe chronique",
+    "dosage": "Selon protocole et echelle douleur",
+    "default_dose": "Dose individualisee sous controle medical",
+    "contraindications": [
+      "insuffisance respiratoire severe",
+      "choc",
+      "traumatisme cranien"
+    ],
+    "interactions": [
+      "antidepresseur sedatif",
+      "antihistaminique",
+      "alcool",
+      "benzodiazepine"
+    ],
+    "warnings": [
+      "Constipation, somnolence, dependance; antidote naloxone disponible."
+    ]
+  },
+  {
+    "name": "NOVALGIN 500",
+    "dci": "Metamizole",
+    "class_name": "Analgesique antipyretique",
+    "indication": "Douleur intense, spasmes, fievre refractaire",
+    "dosage": "1 a 2 cp x 3/j",
+    "default_dose": "500-1000 mg x 3/j",
+    "contraindications": [
+      "allergie pyrazolone",
+      "agranulocytose",
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "methotrexate",
+      "ciclosporine",
+      "warfarine"
+    ],
+    "warnings": [
+      "Risque agranulocytose; surveillance NFS si traitement prolonge."
+    ]
+  },
+  {
+    "name": "SPASFON",
+    "dci": "Phloroglucinol / Trimethylphloroglucinol",
+    "class_name": "Antispasmodique",
+    "indication": "Spasmes digestifs, biliaires, urogenitaux",
+    "dosage": "2 cp x 3/j",
+    "default_dose": "2 cp x 3/j",
+    "contraindications": [
+      "allergie connue"
+    ],
+    "interactions": [
+      "aucune majeure connue"
+    ],
+    "warnings": [
+      "Prudence allergie phloroglucinol."
+    ]
+  },
+  {
+    "name": "BUSCOPAN 10",
+    "dci": "Butylscopolamine",
+    "class_name": "Antispasmodique",
+    "indication": "Spasmes gastro-intestinaux, coliques",
+    "dosage": "1 cp x 3/j",
+    "default_dose": "10 mg x 3/j",
+    "contraindications": [
+      "glaucome a angle ferme",
+      "retention urinaire",
+      "megacolon toxique"
+    ],
+    "interactions": [
+      "anticholinergique",
+      "amantadine",
+      "antidepresseur tricyclique"
+    ],
+    "warnings": [
+      "Secheresse bouche, vision trouble, retention urinaire; prudence age."
+    ]
+  },
+  {
+    "name": "GAVISCON",
+    "dci": "Alginate de sodium / Bicarbonate",
+    "class_name": "Antiacide protecteur",
+    "indication": "Reflux gastro-oesophagien, brulures d estomac",
+    "dosage": "Apres repas et au coucher",
+    "default_dose": "10-20 ml ou 2-4 cp x 3-4/j",
+    "contraindications": [
+      "insuffisance renale severe",
+      "hypocalcemie"
+    ],
+    "interactions": [
+      "tetracycline",
+      "fluoroquinolone",
+      "anticoagulant",
+      "digitalique"
+    ],
+    "warnings": [
+      "Espace avec autres medicaments de 2-4h; prudence insuffisance renale."
+    ]
+  },
+  {
+    "name": "INEXIUM 20",
+    "dci": "Esomeprazole",
+    "class_name": "Inhibiteur de la pompe a protons",
+    "indication": "RGO, ulcere, eradication H. pylori",
+    "dosage": "1 cp/j avant petit-dejeuner",
+    "default_dose": "20-40 mg/j",
+    "contraindications": [
+      "allergie omeprazole/esomeprazole"
+    ],
+    "interactions": [
+      "clopidogrel",
+      "atazanavir",
+      "ketoconazole"
+    ],
+    "warnings": [
+      "Risque fracture osseuse a long terme, carence B12/magnesium; prudence clopidogrel."
+    ]
+  },
+  {
+    "name": "MAALOX",
+    "dci": "Hydroxyde d aluminium / Hydroxyde de magnesium",
+    "class_name": "Antiacide",
+    "indication": "Brulures d estomac, hyperacidite",
+    "dosage": "Apres repas et au coucher",
+    "default_dose": "10-20 ml x 3-4/j",
+    "contraindications": [
+      "insuffisance renale severe",
+      "hypophosphoremie"
+    ],
+    "interactions": [
+      "tetracycline",
+      "fluoroquinolone",
+      "digoxine",
+      "fer"
+    ],
+    "warnings": [
+      "Espace avec autres medicaments de 2-4h; prudence insuffisance renale."
+    ]
+  },
+  {
+    "name": "IMODIUM",
+    "dci": "Loperamide",
+    "class_name": "Antidiarrheique",
+    "indication": "Diarrhee aigue non infectieuse",
+    "dosage": "2 cp initialement puis 1 cp apres chaque selles liquides",
+    "default_dose": "Max 8 cp/j",
+    "contraindications": [
+      "dysenterie",
+      "colite pseudomembraneuse",
+      "obstruction intestinale",
+      "grossesse 1er trimestre"
+    ],
+    "interactions": [
+      "inhibiteur CYP3A4",
+      "antifongique",
+      "macrolide"
+    ],
+    "warnings": [
+      "Ne pas utiliser si suspicion infection invasive; risque ileus paralytique."
+    ]
+  },
+  {
+    "name": "SMECTA",
+    "dci": "Diosmectite",
+    "class_name": "Antidiarrheique protecteur",
+    "indication": "Diarrhee aigue",
+    "dosage": "3 sachets/j",
+    "default_dose": "3 sachets/j",
+    "contraindications": [
+      "hypersensibilite",
+      "obstruction intestinale"
+    ],
+    "interactions": [
+      "espace de 2h avec autres medicaments"
+    ],
+    "warnings": [
+      "Bien hydrater; consulter si fievre ou sang dans selles."
+    ]
+  },
+  {
+    "name": "DUPHALAC",
+    "dci": "Lactulose",
+    "class_name": "Laxatif osmotique",
+    "indication": "Constipation, encephalopathie hepatique",
+    "dosage": "15-45 ml/j",
+    "default_dose": "15-30 ml/j",
+    "contraindications": [
+      "galactosemie",
+      "obstruction intestinale",
+      "perforation digestive"
+    ],
+    "interactions": [
+      "antibiotique oral",
+      "laxatif stimulant"
+    ],
+    "warnings": [
+      "Ballonnements initiaux; bien hydrater."
+    ]
+  },
+  {
+    "name": "FORLAX 10",
+    "dci": "Macrogol 4000",
+    "class_name": "Laxatif osmotique",
+    "indication": "Constipation chronique",
+    "dosage": "1 a 2 sachets/j dans un verre d eau",
+    "default_dose": "1-2 sachets/j",
+    "contraindications": [
+      "perforation digestive",
+      "obstruction intestinale",
+      "maladie inflammatoire intestinale aigue"
+    ],
+    "interactions": [
+      "espace de 2h avec autres medicaments"
+    ],
+    "warnings": [
+      "Bien hydrater; ne pas utiliser en cas de suspicion obstruction."
+    ]
+  },
+  {
+    "name": "VOLTARENE 25",
+    "dci": "Diclofenac",
+    "class_name": "AINS",
+    "indication": "Douleur inflammatoire",
+    "dosage": "1 cp x 2-3/j",
+    "default_dose": "25-50 mg x 2-3/j",
+    "contraindications": [
+      "allergie AINS",
+      "ulcere actif",
+      "insuffisance cardiaque severe"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "aspirine",
+      "iec",
+      "lithium"
+    ],
+    "warnings": [
+      "Risque CV, GI, renal; court terme."
+    ]
+  },
+  {
+    "name": "MEOPROB 500",
+    "dci": "Naproxene",
+    "class_name": "AINS",
+    "indication": "Douleur, dysmenorrhee, arthrose",
+    "dosage": "1 cp x 2/j",
+    "default_dose": "250-500 mg x 2/j",
+    "contraindications": [
+      "allergie AINS",
+      "ulcere actif",
+      "insuffisance cardiaque severe"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "aspirine",
+      "iec",
+      "lithium",
+      "methotrexate"
+    ],
+    "warnings": [
+      "Risque GI, CV, renal; eviter 3e trimestre grossesse."
+    ]
+  },
+  {
+    "name": "AUGMENTIN 1g",
+    "dci": "Amoxicilline / Acide clavulanique",
+    "class_name": "Antibiotique beta-lactamine",
+    "indication": "Infections bacteriennes sensibles",
+    "dosage": "1 cp x 3/j pendant 5-10 jours",
+    "default_dose": "1 g x 3/j",
+    "contraindications": [
+      "allergie penicilline",
+      "mononucleose infectieuse"
+    ],
+    "interactions": [
+      "allopurinol",
+      "methotrexate",
+      "anticoagulant"
+    ],
+    "warnings": [
+      "Risque eruption cutanee; prudence insuffisance hepatique."
+    ]
+  },
+  {
+    "name": "CLAMOXYL 500",
+    "dci": "Amoxicilline",
+    "class_name": "Antibiotique beta-lactamine",
+    "indication": "Infections ORL, pulmonaires, urinaires",
+    "dosage": "1 cp x 3/j pendant 5-7 jours",
+    "default_dose": "500 mg-1 g x 3/j",
+    "contraindications": [
+      "allergie penicilline",
+      "mononucleose infectieuse"
+    ],
+    "interactions": [
+      "allopurinol",
+      "methotrexate"
+    ],
+    "warnings": [
+      "Risque eruption cutanee; respecter duree complete."
+    ]
+  },
+  {
+    "name": "ZITHROMAX 250",
+    "dci": "Azithromycine",
+    "class_name": "Antibiotique macrolide",
+    "indication": "Infections ORL, bronchiques, atypiques",
+    "dosage": "500 mg/j pendant 3 jours ou 250 mg x 3/j",
+    "default_dose": "500 mg/j x 3 jours",
+    "contraindications": [
+      "allergie macrolide",
+      "insuffisance hepatique severe",
+      "arythmie QT"
+    ],
+    "interactions": [
+      "amiodarone",
+      "digoxine",
+      "warfarine",
+      "antiacide",
+      "statine"
+    ],
+    "warnings": [
+      "Risque allongement QT; espace avec antiacide de 2h."
+    ]
+  },
+  {
+    "name": "FLAGYL 250",
+    "dci": "Metronidazole",
+    "class_name": "Antibiotique antiparasitaire",
+    "indication": "Infections anaerobies, amibiase, giardiase",
+    "dosage": "250-500 mg x 3/j pendant 7-10 jours",
+    "default_dose": "500 mg x 3/j",
+    "contraindications": [
+      "allaitement",
+      "hypersensibilite",
+      "grossesse 1er trimestre"
+    ],
+    "interactions": [
+      "alcool",
+      "warfarine",
+      "lithium",
+      "phenytoine"
+    ],
+    "warnings": [
+      "Interdiction stricte alcool; prudence grossesse et allaitement."
+    ]
+  },
+  {
+    "name": "BACTRIM",
+    "dci": "Sulfamethoxazole / Trimethoprime",
+    "class_name": "Antibiotique sulfamide",
+    "indication": "Infections urinaires, bronchiques, toxoplasmosis",
+    "dosage": "1 cp x 2/j pendant 5-14 jours",
+    "default_dose": "1 cp x 2/j",
+    "contraindications": [
+      "allergie sulfamide",
+      "insuffisance hepatique severe",
+      "grossesse 3e trimestre"
+    ],
+    "interactions": [
+      "methotrexate",
+      "warfarine",
+      "phenytoine",
+      "diuretique"
+    ],
+    "warnings": [
+      "Risque rash, Stevens-Johnson; surveiller NFS et creatinine."
+    ]
+  },
+  {
+    "name": "DOXYCYCLINE 100",
+    "dci": "Doxycycline",
+    "class_name": "Antibiotique tetracycline",
+    "indication": "Acne, infections atypiques, borreliose, paludisme",
+    "dosage": "100 mg x 1-2/j pendant 7-14 jours",
+    "default_dose": "100 mg x 2/j",
+    "contraindications": [
+      "grossesse",
+      "allaitement",
+      "enfant < 8 ans",
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "antiacide",
+      "fer",
+      "warfarine",
+      "barbiturique"
+    ],
+    "warnings": [
+      "Photosensibilisation; eviter soleil; prendre avec grand verre d eau."
+    ]
+  },
+  {
+    "name": "CIPROFLOX 500",
+    "dci": "Ciprofloxacine",
+    "class_name": "Antibiotique fluoroquinolone",
+    "indication": "Infections urinaires, digestives, ORL",
+    "dosage": "500 mg x 2/j pendant 5-10 jours",
+    "default_dose": "500 mg x 2/j",
+    "contraindications": [
+      "allergie quinolone",
+      "grossesse",
+      "allaitement",
+      "enfant < 18 ans"
+    ],
+    "interactions": [
+      "antiacide",
+      "fer",
+      "cafeine",
+      "theophylline",
+      "warfarine"
+    ],
+    "warnings": [
+      "Risque tendinite/rupture tendineuse; prudence age > 60 ans."
+    ]
+  },
+  {
+    "name": "ROCEPHINE 1g",
+    "dci": "Ceftriaxone",
+    "class_name": "Cephalosporine III",
+    "indication": "Infections severes, meningite, sepsis",
+    "dosage": "1-2 g/j IM ou IV",
+    "default_dose": "1-2 g/j selon indication",
+    "contraindications": [
+      "allergie cephalosporine",
+      "hyperbilirubinemie neonatale",
+      "insuffisance renale severe associee"
+    ],
+    "interactions": [
+      "calcium IV",
+      "warfarine",
+      "aminoside"
+    ],
+    "warnings": [
+      "Ne pas melanger avec calcium IV; risque precipitation biliaire."
+    ]
+  },
+  {
+    "name": "ORELOX 200",
+    "dci": "Cefpodoxime",
+    "class_name": "Cephalosporine III",
+    "indication": "Infections ORL, bronchiques, urinaires",
+    "dosage": "1 cp x 2/j pendant 5-10 jours",
+    "default_dose": "200 mg x 2/j",
+    "contraindications": [
+      "allergie cephalosporine"
+    ],
+    "interactions": [
+      "antiacide",
+      "probenecide",
+      "warfarine"
+    ],
+    "warnings": [
+      "Respecter duree complete; prudence insuffisance renale."
+    ]
+  },
+  {
+    "name": "MYCOSTATINE",
+    "dci": "Nystatine",
+    "class_name": "Antifongique local",
+    "indication": "Mycoses orales, candidoses digestives",
+    "dosage": "4-6 cp/j ou suspension",
+    "default_dose": "500000 UI x 4/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune majeure"
+    ],
+    "warnings": [
+      "Effets gastro-intestinaux possibles."
+    ]
+  },
+  {
+    "name": "FLUCONAZOL 150",
+    "dci": "Fluconazole",
+    "class_name": "Antifongique azole",
+    "indication": "Candidoses, mycoses severes",
+    "dosage": "150 mg dose unique ou 50-200 mg/j",
+    "default_dose": "150 mg dose unique ou 50-200 mg/j",
+    "contraindications": [
+      "allergie azole",
+      "allongement QT",
+      "grossesse"
+    ],
+    "interactions": [
+      "warfarine",
+      "phenytoine",
+      "ciclosporine",
+      "sulfamide",
+      "statine",
+      "amiodarone"
+    ],
+    "warnings": [
+      "Risque hepatotoxicite; surveiller interactions CYP2C9/3A4."
+    ]
+  },
+  {
+    "name": "SPORANOX 100",
+    "dci": "Itraconazole",
+    "class_name": "Antifongique azole",
+    "indication": "Mycoses severes, onychomycoses",
+    "dosage": "100-200 mg x 1-2/j",
+    "default_dose": "200 mg x 2/j pulse therapy",
+    "contraindications": [
+      "insuffisance cardiaque",
+      "allongement QT",
+      "grossesse"
+    ],
+    "interactions": [
+      "terfenadine",
+      "astemizole",
+      "cisapride",
+      "midazolam",
+      "triazolam",
+      "lovastatine",
+      "simvastatine"
+    ],
+    "warnings": [
+      "Risque hepatotoxicite; prendre avec repas; interactions CYP3A4."
+    ]
+  },
+  {
+    "name": "LAMISIL 250",
+    "dci": "Terbinafine",
+    "class_name": "Antifongique allylamine",
+    "indication": "Onychomycoses, mycoses cutanees",
+    "dosage": "250 mg/j pendant 6-12 semaines",
+    "default_dose": "250 mg/j",
+    "contraindications": [
+      "insuffisance hepatique active",
+      "grossesse",
+      "allaitement"
+    ],
+    "interactions": [
+      "cimetidine",
+      "rifampicine",
+      "ciclosporine"
+    ],
+    "warnings": [
+      "Surveiller fonction hepatique; rare hepatotoxicite severe."
+    ]
+  },
+  {
+    "name": "RIMACTANE",
+    "dci": "Rifampicine",
+    "class_name": "Antibiotique antituberculeux",
+    "indication": "Tuberculose, prophylaxie meningocoque",
+    "dosage": "Selon protocole et poids",
+    "default_dose": "10 mg/kg/j max 600 mg/j",
+    "contraindications": [
+      "insuffisance hepatique severe",
+      "cholestase"
+    ],
+    "interactions": [
+      "contraceptif oral",
+      "warfarine",
+      "anticonvulsivant",
+      "antiretroviral"
+    ],
+    "warnings": [
+      "Coloration orange secretions; nombreuses interactions enzymatiques."
+    ]
+  },
+  {
+    "name": "INH",
+    "dci": "Isoniazide",
+    "class_name": "Antibiotique antituberculeux",
+    "indication": "Tuberculose",
+    "dosage": "5 mg/kg/j max 300 mg/j",
+    "default_dose": "300 mg/j",
+    "contraindications": [
+      "hepatite aigue",
+      "neuropathie peripherique severe"
+    ],
+    "interactions": [
+      "carbamazepine",
+      "phenytoine",
+      "warfarine"
+    ],
+    "warnings": [
+      "Supplementation vitamine B6; surveiller hepatique et neuropathie."
+    ]
+  },
+  {
+    "name": "ACICLOVIR 200",
+    "dci": "Aciclovir",
+    "class_name": "Antiviral",
+    "indication": "Herpes simplex, zona",
+    "dosage": "5 cp/j pendant 5-10 jours",
+    "default_dose": "200-400 mg x 5/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "probenecide",
+      "nephrotoxique associe"
+    ],
+    "warnings": [
+      "Hydrater; prudence insuffisance renale; risque neurotoxicite."
+    ]
+  },
+  {
+    "name": "VALTREX 500",
+    "dci": "Valaciclovir",
+    "class_name": "Antiviral",
+    "indication": "Herpes genital, zona",
+    "dosage": "2 cp x 3/j pendant 7-10 jours",
+    "default_dose": "500 mg-1 g x 3/j",
+    "contraindications": [
+      "hypersensibilite aciclovir"
+    ],
+    "interactions": [
+      "probenecide",
+      "nephrotoxique associe"
+    ],
+    "warnings": [
+      "Hydrater; prudence insuffisance renale."
+    ]
+  },
+  {
+    "name": "TAMIFLU 75",
+    "dci": "Oseltamivir",
+    "class_name": "Antiviral neuraminidase",
+    "indication": "Grippe",
+    "dosage": "1 cp x 2/j pendant 5 jours",
+    "default_dose": "75 mg x 2/j x 5 jours",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune majeure connue"
+    ],
+    "warnings": [
+      "Efficacite max si debut < 48h; effets GI frequents."
+    ]
+  },
+  {
+    "name": "DOLIPRANE 100 mg",
+    "dci": "Paracetamol",
+    "class_name": "Analgesique antipyretique",
+    "indication": "Fievre, douleur chez l enfant",
+    "dosage": "15 mg/kg/dose toutes les 6h max 60 mg/kg/j",
+    "default_dose": "15 mg/kg x 4-6/j",
+    "contraindications": [
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "warfarine",
+      "alcool"
+    ],
+    "warnings": [
+      "Respecter dose max; mesurer avec seringue ou cuillere doseuse."
+    ]
+  },
+  {
+    "name": "DOLIPRANE 150 mg",
+    "dci": "Paracetamol",
+    "class_name": "Analgesique antipyretique",
+    "indication": "Fievre, douleur enfant",
+    "dosage": "15 mg/kg/dose toutes les 6h",
+    "default_dose": "15 mg/kg x 4-6/j",
+    "contraindications": [
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "warfarine"
+    ],
+    "warnings": [
+      "Respecter dose max; utiliser mesure precise."
+    ]
+  },
+  {
+    "name": "DOLIPRANE 240 mg",
+    "dci": "Paracetamol",
+    "class_name": "Analgesique antipyretique",
+    "indication": "Fievre, douleur enfant",
+    "dosage": "15 mg/kg/dose toutes les 6h",
+    "default_dose": "15 mg/kg x 4-6/j",
+    "contraindications": [
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "warfarine"
+    ],
+    "warnings": [
+      "Respecter dose max journaliere."
+    ]
+  },
+  {
+    "name": "ADVIL PEDIATRIQUE",
+    "dci": "Ibuprofene",
+    "class_name": "AINS pediatrique",
+    "indication": "Fievre, douleur inflammatoire enfant > 3 mois",
+    "dosage": "5-10 mg/kg/dose toutes les 6-8h",
+    "default_dose": "7.5 mg/kg x 3-4/j",
+    "contraindications": [
+      "deshydratation",
+      "allergie AINS",
+      "gastroenterite",
+      "varicelle"
+    ],
+    "interactions": [
+      "aspirine",
+      "anticoagulant",
+      "iec"
+    ],
+    "warnings": [
+      "Ne pas utiliser en cas de deshydratation ou varicelle."
+    ]
+  },
+  {
+    "name": "BRUFEN 100 mg/5ml",
+    "dci": "Ibuprofene",
+    "class_name": "AINS pediatrique",
+    "indication": "Fievre, douleur enfant",
+    "dosage": "5-10 mg/kg/dose",
+    "default_dose": "7.5 mg/kg x 3-4/j",
+    "contraindications": [
+      "deshydratation",
+      "allergie AINS",
+      "varicelle"
+    ],
+    "interactions": [
+      "aspirine",
+      "anticoagulant"
+    ],
+    "warnings": [
+      "Ne pas utiliser en cas de deshydratation; mesure precise."
+    ]
+  },
+  {
+    "name": "AUGMENTIN 500 mg/62.5 mg",
+    "dci": "Amoxicilline / Acide clavulanique",
+    "class_name": "Antibiotique pediatrique",
+    "indication": "Infections bacteriennes ORL, pulmonaires",
+    "dosage": "25-45 mg/kg/j d amoxicilline en 2-3 prises",
+    "default_dose": "Selon poids et indication",
+    "contraindications": [
+      "allergie penicilline",
+      "mononucleose"
+    ],
+    "interactions": [
+      "allopurinol",
+      "methotrexate"
+    ],
+    "warnings": [
+      "Respecter duree complete; risque eruption."
+    ]
+  },
+  {
+    "name": "CLAMOXYL 125 mg/5ml",
+    "dci": "Amoxicilline",
+    "class_name": "Antibiotique pediatrique",
+    "indication": "Infections bacteriennes chez l enfant",
+    "dosage": "25-50 mg/kg/j en 2-3 prises",
+    "default_dose": "Selon poids et indication",
+    "contraindications": [
+      "allergie penicilline"
+    ],
+    "interactions": [
+      "allopurinol"
+    ],
+    "warnings": [
+      "Respecter duree complete."
+    ]
+  },
+  {
+    "name": "ZITHROMAX 200 mg/5ml",
+    "dci": "Azithromycine",
+    "class_name": "Antibiotique macrolide pediatrique",
+    "indication": "Infections ORL, bronchiques chez l enfant",
+    "dosage": "10 mg/kg/j pendant 3 jours",
+    "default_dose": "10 mg/kg/j x 3 jours",
+    "contraindications": [
+      "allergie macrolide",
+      "insuffisance hepatique"
+    ],
+    "interactions": [
+      "amiodarone",
+      "warfarine"
+    ],
+    "warnings": [
+      "Risque allongement QT; prudence insuffisance hepatique."
+    ]
+  },
+  {
+    "name": "SPASFON LYOC",
+    "dci": "Phloroglucinol",
+    "class_name": "Antispasmodique pediatrique",
+    "indication": "Coliques du nourrisson, spasmes",
+    "dosage": "Selon age et poids",
+    "default_dose": "1/2 cp x 2-3/j selon age",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune majeure"
+    ],
+    "warnings": [
+      "Respecter posologie age."
+    ]
+  },
+  {
+    "name": "GAVISCON INFANT",
+    "dci": "Alginate de sodium / Bicarbonate",
+    "class_name": "Antireflux pediatrique",
+    "indication": "Reflux gastro-oesophagien du nourrisson",
+    "dosage": "Apres chaque tetee",
+    "default_dose": "1-2 ml apres tetee",
+    "contraindications": [
+      "insuffisance renale severe"
+    ],
+    "interactions": [
+      "espace de 2h avec autres medicaments"
+    ],
+    "warnings": [
+      "Bien agiter; prudence insuffisance renale."
+    ]
+  },
+  {
+    "name": "SECTRAL 2.5 mg",
+    "dci": "Acebutolol",
+    "class_name": "Beta-bloquant pediatrique",
+    "indication": "HTA, tachycardie chez l enfant",
+    "dosage": "Selon poids et specialiste",
+    "default_dose": "Dose individualisee par le cardiologue pediatre",
+    "contraindications": [
+      "bradycardie",
+      "bloc AV",
+      "asthme severe"
+    ],
+    "interactions": [
+      "verapamil",
+      "digoxine"
+    ],
+    "warnings": [
+      "Surveillance cardiologique pediatrique obligatoire."
+    ]
+  },
+  {
+    "name": "VITAMINE D 1000 UI",
+    "dci": "Cholecalciferol",
+    "class_name": "Vitamine D",
+    "indication": "Prevention rachitisme, carence vitamine D",
+    "dosage": "1 cp/j",
+    "default_dose": "1000-2000 UI/j selon age et statut",
+    "contraindications": [
+      "hypercalcemie",
+      "lithiase renale",
+      "sarcoidose"
+    ],
+    "interactions": [
+      "diuretique thiazidique",
+      "digitalique"
+    ],
+    "warnings": [
+      "Ne pas depasser dose recommandee; surveiller calcemie si forte dose."
+    ]
+  },
+  {
+    "name": "CALCIUM SANDOZ",
+    "dci": "Calcium carbonate / Vitamine D3",
+    "class_name": "Calcium vitamine D",
+    "indication": "Croissance osseuse, prevention osteoporose",
+    "dosage": "1 cp x 2/j",
+    "default_dose": "1 cp x 2/j",
+    "contraindications": [
+      "hypercalcemie",
+      "lithiase renale"
+    ],
+    "interactions": [
+      "digitalique",
+      "thiazidique",
+      "tetracycline",
+      "fluoroquinolone"
+    ],
+    "warnings": [
+      "Espace avec autres medicaments de 2-4h."
+    ]
+  },
+  {
+    "name": "FERO-GRADUMET",
+    "dci": "Fer sulfate",
+    "class_name": "Fer",
+    "indication": "Anemie ferriprive, prevention chez la femme enceinte",
+    "dosage": "1 cp/j",
+    "default_dose": "200 mg/j (65 mg fer elementaire)",
+    "contraindications": [
+      "hemochromatose",
+      "anemie non ferriprive"
+    ],
+    "interactions": [
+      "antiacide",
+      "tetracycline",
+      "fluoroquinolone",
+      "levothyroxine"
+    ],
+    "warnings": [
+      "Effets GI frequents; espace avec autres medicaments de 2-4h."
+    ]
+  },
+  {
+    "name": "ACTIFERRINE",
+    "dci": "Fer bisglycinate",
+    "class_name": "Fer",
+    "indication": "Anemie ferriprive pediatrique et adulte",
+    "dosage": "Selon age et deficit",
+    "default_dose": "Selon poids et deficit",
+    "contraindications": [
+      "hemochromatose",
+      "anemie non ferriprive"
+    ],
+    "interactions": [
+      "antiacide",
+      "tetracycline",
+      "fluoroquinolone"
+    ],
+    "warnings": [
+      "Moins d effets GI que fer sulfate; espace avec autres medicaments."
+    ]
+  },
+  {
+    "name": "VERMOX 100",
+    "dci": "Mebendazole",
+    "class_name": "Antiparasitaire",
+    "indication": "Parasitoses intestinales",
+    "dosage": "1 cp dose unique ou 2 cp/j x 3 jours",
+    "default_dose": "100 mg dose unique ou 100 mg x 2/j x 3 jours",
+    "contraindications": [
+      "hypersensibilite",
+      "grossesse 1er trimestre"
+    ],
+    "interactions": [
+      "carbamazepine",
+      "phenytoine",
+      "metronidazole"
+    ],
+    "warnings": [
+      "Traiter entourage; prudence grossesse; rare hepatotoxicite."
+    ]
+  },
+  {
+    "name": "MICROGYNON",
+    "dci": "Levonorgestrel / Ethinylestradiol",
+    "class_name": "Contraception orale combinee",
+    "indication": "Contraception",
+    "dosage": "1 cp/j a heure fixe pendant 21 jours puis 7 jours arret",
+    "default_dose": "1 cp/j x 21 jours",
+    "contraindications": [
+      "thrombose",
+      "AVC",
+      "cancer sein/endometre",
+      "grossesse",
+      "hepatite severe",
+      "migraine avec aura",
+      "HTA non controlee"
+    ],
+    "interactions": [
+      "rifampicine",
+      "anticonvulsivant",
+      "antiretroviral",
+      "antifongique",
+      "antibiotique"
+    ],
+    "warnings": [
+      "Risque thromboembolique; surveiller TA; contre-indiquee si migraine avec aura."
+    ]
+  },
+  {
+    "name": "MERCILON",
+    "dci": "Desogestrel / Ethinylestradiol",
+    "class_name": "Contraception orale combinee",
+    "indication": "Contraception",
+    "dosage": "1 cp/j x 21 jours",
+    "default_dose": "1 cp/j x 21 jours",
+    "contraindications": [
+      "thrombose",
+      "AVC",
+      "cancer hormone-dependant",
+      "hepatite severe",
+      "migraine avec aura"
+    ],
+    "interactions": [
+      "rifampicine",
+      "anticonvulsivant",
+      "antiretroviral"
+    ],
+    "warnings": [
+      "Risque thromboembolique; surveillance TA et poids."
+    ]
+  },
+  {
+    "name": "EXLUTION",
+    "dci": "Drospirenone / Ethinylestradiol",
+    "class_name": "Contraception orale combinee",
+    "indication": "Contraception, acnee",
+    "dosage": "1 cp/j x 21 jours",
+    "default_dose": "1 cp/j x 21 jours",
+    "contraindications": [
+      "thrombose",
+      "AVC",
+      "insuffisance renale",
+      "hyperkaliemie",
+      "hepatite severe",
+      "migraine avec aura"
+    ],
+    "interactions": [
+      "spironolactone",
+      "potassium",
+      "IEC",
+      "ARA2",
+      "rifampicine"
+    ],
+    "warnings": [
+      "Risque thromboembolique et hyperkaliemie; surveiller kaliemie si association spironolactone."
+    ]
+  },
+  {
+    "name": "CERAZETTE",
+    "dci": "Desogestrel",
+    "class_name": "Contraception progestative",
+    "indication": "Contraception sans estrogenes",
+    "dosage": "1 cp/j a heure fixe sans interruption",
+    "default_dose": "1 cp/j continu",
+    "contraindications": [
+      "cancer sein",
+      "hepatite severe",
+      "trombose",
+      "grossesse non diagnostiquee"
+    ],
+    "interactions": [
+      "rifampicine",
+      "anticonvulsivant",
+      "antiretroviral"
+    ],
+    "warnings": [
+      "Irregularites cycliques frequentes; delai de 48h si oubli."
+    ]
+  },
+  {
+    "name": "SAYANA PRESS",
+    "dci": "Medroxyprogesterone",
+    "class_name": "Contraception injectable",
+    "indication": "Contraception 3 mois",
+    "dosage": "1 injection IM tous les 3 mois",
+    "default_dose": "150 mg IM tous les 3 mois",
+    "contraindications": [
+      "grossesse non diagnostiquee",
+      "cancer sein",
+      "hepatite severe",
+      "trombose"
+    ],
+    "interactions": [
+      "aminoglutethimide",
+      "anticonvulsivant"
+    ],
+    "warnings": [
+      "Retour fertilite variable; surveillance densite osseuse a long terme."
+    ]
+  },
+  {
+    "name": "SPIRALINE MIRENA",
+    "dci": "Levonorgestrel",
+    "class_name": "Contraception intra-uterine",
+    "indication": "Contraception 5 ans, meno-metrorragies",
+    "dosage": "Pose par gynecologue",
+    "default_dose": "1 DIU tous les 5 ans",
+    "contraindications": [
+      "grossesse",
+      "cancer cervix/utأ©rus",
+      "infection pelvienne active",
+      "anomalie uterine"
+    ],
+    "interactions": [
+      "aucune majeure"
+    ],
+    "warnings": [
+      "Pose par professionnel; risque expulsion, perforation; monitoring regulier."
+    ]
+  },
+  {
+    "name": "DUPHASTON 10",
+    "dci": "Dydrogesterone",
+    "class_name": "Progestatif",
+    "indication": "Menaces d avortement, insuffisance luteale, dysmenorrhee",
+    "dosage": "1 cp x 2-3/j selon indication",
+    "default_dose": "10 mg x 2-3/j",
+    "contraindications": [
+      "cancer sein/endometre",
+      "trombose",
+      "hemorragie genitale non diagnostiquee"
+    ],
+    "interactions": [
+      "rifampicine",
+      "anticonvulsivant"
+    ],
+    "warnings": [
+      "Prudence si antecedent thromboembolique; controle gynecologique."
+    ]
+  },
+  {
+    "name": "LUTERAN 5",
+    "dci": "Lynestrenol",
+    "class_name": "Progestatif",
+    "indication": "Menorragies, endometriose, menopause hormonale",
+    "dosage": "1-3 cp/j selon indication",
+    "default_dose": "5-15 mg/j selon indication",
+    "contraindications": [
+      "cancer hormone-dependant",
+      "trombose",
+      "hemorragie non diagnostiquee",
+      "hepatite severe"
+    ],
+    "interactions": [
+      "rifampicine",
+      "anticonvulsivant"
+    ],
+    "warnings": [
+      "Surveillance gynecologique reguliere."
+    ]
+  },
+  {
+    "name": "PROGYNOVA 2",
+    "dci": "Estradiol valerate",
+    "class_name": "Hormonotherapie estrogenique",
+    "indication": "Mأ©nopause, insuffisance estrogenique",
+    "dosage": "1 cp/j",
+    "default_dose": "1-2 mg/j",
+    "contraindications": [
+      "cancer sein/endometre",
+      "trombose",
+      "hepatite severe",
+      "saignements non diagnostiques"
+    ],
+    "interactions": [
+      "rifampicine",
+      "anticonvulsivant",
+      "antiretroviral"
+    ],
+    "warnings": [
+      "Risque thromboembolique; surveillance mammaire et gynecologique."
+    ]
+  },
+  {
+    "name": "CLOMID 50",
+    "dci": "Clomifene",
+    "class_name": "Inducteur de l ovulation",
+    "indication": "Infertilite par anovulation",
+    "dosage": "1 cp/j du 2e au 6e jour du cycle pendant 5 jours",
+    "default_dose": "50-100 mg/j x 5 jours",
+    "contraindications": [
+      "grossesse",
+      "insuffisance hepatique severe",
+      "kyste ovarien",
+      "metrorragies non diagnostiquees"
+    ],
+    "interactions": [
+      "aucune majeure connue"
+    ],
+    "warnings": [
+      "Risque grossesse multiple; surveillance echographique; syndrome d hyperstimulation ovarienne."
+    ]
+  },
+  {
+    "name": "UTROGESTAN 200",
+    "dci": "Progesterone micronisee",
+    "class_name": "Progestatif naturel",
+    "indication": "Menopause hormonale, menaces d avortement, insuffisance luteale",
+    "dosage": "1-2 cp/j voie vaginale ou orale",
+    "default_dose": "200 mg x 2/j",
+    "contraindications": [
+      "cancer sein/endometre",
+      "trombose",
+      "hemorragie non diagnostiquee"
+    ],
+    "interactions": [
+      "rifampicine",
+      "anticonvulsivant"
+    ],
+    "warnings": [
+      "Somnolence possible si voie orale; prudence conduite automobile."
+    ]
+  },
+  {
+    "name": "FOLACIN",
+    "dci": "Acide folique",
+    "class_name": "Vitamine B9",
+    "indication": "Prevention malformations neuronales, anemie megaloblastique",
+    "dosage": "1 cp/j",
+    "default_dose": "0.4-5 mg/j selon indication",
+    "contraindications": [
+      "anemie non ferriprive non diagnostiquee"
+    ],
+    "interactions": [
+      "methotrexate",
+      "phenytoine",
+      "sulfamide"
+    ],
+    "warnings": [
+      "Ne pas masquer carence B12; prise avant conception recommandee."
+    ]
+  },
+  {
+    "name": "FERROFOL",
+    "dci": "Fer / Acide folique",
+    "class_name": "Fer + vitamine B9",
+    "indication": "Anemie ferriprive et prevention grossesse",
+    "dosage": "1 cp/j",
+    "default_dose": "1 cp/j",
+    "contraindications": [
+      "hemochromatose",
+      "anemie non ferriprive"
+    ],
+    "interactions": [
+      "antiacide",
+      "tetracycline",
+      "levothyroxine"
+    ],
+    "warnings": [
+      "Espace avec autres medicaments de 2-4h."
+    ]
+  },
+  {
+    "name": "GESTAFER",
+    "dci": "Fer fumarate / Acide folique",
+    "class_name": "Fer + vitamine B9",
+    "indication": "Anemie grossesse",
+    "dosage": "1 cp/j",
+    "default_dose": "1 cp/j",
+    "contraindications": [
+      "hemochromatose",
+      "anemie non ferriprive"
+    ],
+    "interactions": [
+      "antiacide",
+      "tetracycline"
+    ],
+    "warnings": [
+      "Espace avec autres medicaments de 2-4h."
+    ]
+  },
+  {
+    "name": "MACROGYNOVIA",
+    "dci": "Macrogol 3350",
+    "class_name": "Laxatif osmotique",
+    "indication": "Constipation grossesse",
+    "dosage": "1-2 sachets/j",
+    "default_dose": "1-2 sachets/j",
+    "contraindications": [
+      "perforation digestive",
+      "obstruction intestinale"
+    ],
+    "interactions": [
+      "espace de 2h avec autres medicaments"
+    ],
+    "warnings": [
+      "Bien hydrater; sur enfant et grossesse."
+    ]
+  },
+  {
+    "name": "TIMOLOL 0.5%",
+    "dci": "Timolol",
+    "class_name": "Beta-bloquant ophtalmique",
+    "indication": "Glaucome a pression ouverte",
+    "dosage": "1 goutte x 2/j",
+    "default_dose": "1 goutte x 2/j",
+    "contraindications": [
+      "asthme",
+      "BPCO severe",
+      "bradycardie",
+      "bloc AV",
+      "insuffisance cardiaque"
+    ],
+    "interactions": [
+      "beta-bloquant oral",
+      "verapamil",
+      "digoxine"
+    ],
+    "warnings": [
+      "Systemique possible; surveiller FC et bronchospasme."
+    ]
+  },
+  {
+    "name": "ALPHAGAN",
+    "dci": "Brimonidine",
+    "class_name": "Agoniste alpha-2 ophtalmique",
+    "indication": "Glaucome",
+    "dosage": "1 goutte x 2-3/j",
+    "default_dose": "1 goutte x 3/j",
+    "contraindications": [
+      "allergie",
+      "MAOI"
+    ],
+    "interactions": [
+      "antidepresseur tricyclique",
+      "MAOI",
+      "beta-bloquant"
+    ],
+    "warnings": [
+      "Fatigue, secheresse bouche; prudence depression, BPCO."
+    ]
+  },
+  {
+    "name": "TRAVATAN",
+    "dci": "Travoprost",
+    "class_name": "Analogue prostaglandine ophtalmique",
+    "indication": "Glaucome a pression ouverte, hypertension oculaire",
+    "dosage": "1 goutte le soir",
+    "default_dose": "1 goutte/j le soir",
+    "contraindications": [
+      "grossesse",
+      "allaitement",
+      "uveite active",
+      "maculaire pseudophake"
+    ],
+    "interactions": [
+      "timolol",
+      "dorzolamide",
+      "pilocarpine"
+    ],
+    "warnings": [
+      "Cil darker, longer; pigmentation iris possible; prudence maculaire."
+    ]
+  },
+  {
+    "name": "XALATAN",
+    "dci": "Latanoprost",
+    "class_name": "Analogue prostaglandine ophtalmique",
+    "indication": "Glaucome, hypertension oculaire",
+    "dosage": "1 goutte le soir",
+    "default_dose": "1 goutte/j le soir",
+    "contraindications": [
+      "grossesse",
+      "allaitement",
+      "uveite active",
+      "maculaire pseudophake"
+    ],
+    "interactions": [
+      "timolol",
+      "dorzolamide"
+    ],
+    "warnings": [
+      "Cil darker, longer; pigmentation iris possible."
+    ]
+  },
+  {
+    "name": "COSOPT",
+    "dci": "Dorzolamide / Timolol",
+    "class_name": "Inhibiteur anhydrase carbonique + beta-bloquant",
+    "indication": "Glaucome resistant",
+    "dosage": "1 goutte x 2/j",
+    "default_dose": "1 goutte x 2/j",
+    "contraindications": [
+      "asthme",
+      "BPCO severe",
+      "bradycardie",
+      "insuffisance cardiaque",
+      "hypersensibilite sulfamide"
+    ],
+    "interactions": [
+      "beta-bloquant oral",
+      "salicylate haute dose"
+    ],
+    "warnings": [
+      "Brulure oculaire, dysgueusie; surveillance systemique."
+    ]
+  },
+  {
+    "name": "TOBREX",
+    "dci": "Tobramycine",
+    "class_name": "Antibiotique ophtalmique aminoglucoside",
+    "indication": "Conjonctivite bacterienne, kأ©ratite",
+    "dosage": "1 goutte x 4/j ou pommade x 3/j",
+    "default_dose": "1 goutte x 4/j",
+    "contraindications": [
+      "hypersensibilite aminoglucoside"
+    ],
+    "interactions": [
+      "autre nephrotoxique",
+      "curare"
+    ],
+    "warnings": [
+      "Prudence insuffisance renale; ne pas utiliser long terme."
+    ]
+  },
+  {
+    "name": "CILOXAN",
+    "dci": "Ciprofloxacine",
+    "class_name": "Antibiotique ophtalmique fluoroquinolone",
+    "indication": "Conjonctivite, kأ©ratite bacterienne, ulcere cornأ©en",
+    "dosage": "1 goutte x 4-6/j",
+    "default_dose": "1 goutte x 4-6/j",
+    "contraindications": [
+      "allergie quinolone"
+    ],
+    "interactions": [
+      "aucune majeure topique"
+    ],
+    "warnings": [
+      "Prurit oculaire; prudence enfant < 1 an."
+    ]
+  },
+  {
+    "name": "VOLTAREN COLLYRE",
+    "dci": "Diclofenac",
+    "class_name": "AINS ophtalmique",
+    "indication": "Inflammation post-operatoire, photophobie, douleur",
+    "dosage": "1 goutte x 4/j",
+    "default_dose": "1 goutte x 4/j",
+    "contraindications": [
+      "allergie AINS",
+      "grossesse 3e trimestre"
+    ],
+    "interactions": [
+      "anticoagulant oral",
+      "autre AINS"
+    ],
+    "warnings": [
+      "Retarder cicatrisation cornأ©enne; prudence anticoagulation."
+    ]
+  },
+  {
+    "name": "ARTELAC",
+    "dci": "Carboxymethylcellulose",
+    "class_name": "Larme artificielle",
+    "indication": "Secheresse oculaire, irritation",
+    "dosage": "1 goutte x 4-6/j",
+    "default_dose": "1 goutte x 4-6/j",
+    "contraindications": [
+      "aucune"
+    ],
+    "interactions": [
+      "espace 10 min avec autres collyres"
+    ],
+    "warnings": [
+      "Ne pas toucher l oeil avec le compte-gouttes."
+    ]
+  },
+  {
+    "name": "Systane ULTRA",
+    "dci": "Polyethylene glycol / Propylene glycol",
+    "class_name": "Larme artificielle",
+    "indication": "Secheresse oculaire",
+    "dosage": "1 goutte x 4-6/j",
+    "default_dose": "1 goutte x 4-6/j",
+    "contraindications": [
+      "aucune"
+    ],
+    "interactions": [
+      "espace 10 min avec autres collyres"
+    ],
+    "warnings": [
+      "Conservation limitee apres ouverture."
+    ]
+  },
+  {
+    "name": "MAXIDEX",
+    "dci": "Dexamethasone",
+    "class_name": "Corticoide ophtalmique",
+    "indication": "Uveite, inflammation severe, allergie oculaire",
+    "dosage": "1 goutte x 4-6/j puis reduction progressive",
+    "default_dose": "1 goutte x 4-6/j",
+    "contraindications": [
+      "infection oculaire non traitee",
+      "herpes simplex cornأ©en",
+      "glaucome"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "antidiabetique oral"
+    ],
+    "warnings": [
+      "Risque cataracte, glaucome, infection; surveillance IOP."
+    ]
+  },
+  {
+    "name": "FLUOROMETHOLONE",
+    "dci": "Fluorometholone",
+    "class_name": "Corticoide ophtalmique faible",
+    "indication": "Allergie oculaire, inflammation moderee",
+    "dosage": "1 goutte x 4/j",
+    "default_dose": "1 goutte x 4/j",
+    "contraindications": [
+      "infection oculaire non traitee",
+      "herpes simplex"
+    ],
+    "interactions": [
+      "anticoagulant"
+    ],
+    "warnings": [
+      "Risque IOP; moins de penetration systemique que dexamethasone."
+    ]
+  },
+  {
+    "name": "ATROPINE 1%",
+    "dci": "Atropine sulfate",
+    "class_name": "Mydriatique cycloplegique",
+    "indication": "Refraction, uveite, strabisme",
+    "dosage": "1 goutte x 1-2/j",
+    "default_dose": "1 goutte x 1-2/j",
+    "contraindications": [
+      "glaucome a angle ferme",
+      "allergie atropine"
+    ],
+    "interactions": [
+      "anticholinergique",
+      "amantadine"
+    ],
+    "warnings": [
+      "Photophobie, vision trouble; risque glaucome angle ferme."
+    ]
+  },
+  {
+    "name": "CYCLOGYL 1%",
+    "dci": "Cyclopentolate",
+    "class_name": "Mydriatique cycloplegique",
+    "indication": "Refraction pediatrique",
+    "dosage": "1 goutte x 2",
+    "default_dose": "1 goutte x 2",
+    "contraindications": [
+      "glaucome a angle ferme"
+    ],
+    "interactions": [
+      "anticholinergique"
+    ],
+    "warnings": [
+      "Agitation enfant; prudence < 6 mois."
+    ]
+  },
+  {
+    "name": "PILOCARPINE 2%",
+    "dci": "Pilocarpine",
+    "class_name": "Mioticique",
+    "indication": "Glaucome a angle ferme aigu, crise",
+    "dosage": "1 goutte x 3-4/j",
+    "default_dose": "1 goutte x 3-4/j",
+    "contraindications": [
+      "uveite",
+      "iritis"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "atropine"
+    ],
+    "warnings": [
+      "Miosis, myopie induite, cephalee frontale."
+    ]
+  },
+  {
+    "name": "NASONEX",
+    "dci": "Mometasone",
+    "class_name": "Corticoide nasal",
+    "indication": "Rhinite allergique, polypose nasale",
+    "dosage": "1 pulverisation x 2/j",
+    "default_dose": "2 pulverisations x 1/j",
+    "contraindications": [
+      "infection nasale non traitee",
+      "tuberculose nasale"
+    ],
+    "interactions": [
+      "ketoconazole oral"
+    ],
+    "warnings": [
+      "Saignement nasal; surveillance si polypose nasale chirurgicale."
+    ]
+  },
+  {
+    "name": "FLIXONASE",
+    "dci": "Fluticasone",
+    "class_name": "Corticoide nasal",
+    "indication": "Rhinite allergique",
+    "dosage": "2 pulverisations x 1/j",
+    "default_dose": "2 pulverisations x 1/j",
+    "contraindications": [
+      "infection nasale non traitee"
+    ],
+    "interactions": [
+      "ritonavir",
+      "ketoconazole"
+    ],
+    "warnings": [
+      "Saignement nasal; prudence grossesse."
+    ]
+  },
+  {
+    "name": "RHINOCORT",
+    "dci": "Budesonide",
+    "class_name": "Corticoide nasal",
+    "indication": "Rhinite allergique",
+    "dosage": "2 pulverisations x 2/j",
+    "default_dose": "2 pulverisations x 2/j",
+    "contraindications": [
+      "infection nasale non traitee"
+    ],
+    "interactions": [
+      "ketoconazole",
+      "ritonavir"
+    ],
+    "warnings": [
+      "Saignement nasal; bien diriger pulverisation lateralement."
+    ]
+  },
+  {
+    "name": "AERIUS",
+    "dci": "Desloratadine",
+    "class_name": "Antihistaminique H1 non sedatif",
+    "indication": "Rhinite allergique, urticaire",
+    "dosage": "1 cp/j",
+    "default_dose": "5 mg/j",
+    "contraindications": [
+      "hypersensibilite",
+      "grossesse et allaitement sans avis medical"
+    ],
+    "interactions": [
+      "aucune majeure"
+    ],
+    "warnings": [
+      "Rare somnolence; prudence grossesse."
+    ]
+  },
+  {
+    "name": "ZYRTEC",
+    "dci": "Cetirizine",
+    "class_name": "Antihistaminique H1",
+    "indication": "Rhinite, urticaire, prurit",
+    "dosage": "1 cp/j",
+    "default_dose": "10 mg/j",
+    "contraindications": [
+      "hypersensibilite",
+      "insuffisance renale severe"
+    ],
+    "interactions": [
+      "alcool",
+      "sedatif",
+      "theophylline"
+    ],
+    "warnings": [
+      "Somnolence possible; prudence conduite."
+    ]
+  },
+  {
+    "name": "CLARITINE",
+    "dci": "Loratadine",
+    "class_name": "Antihistaminique H1 non sedatif",
+    "indication": "Rhinite allergique, urticaire",
+    "dosage": "1 cp/j",
+    "default_dose": "10 mg/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "ketoconazole",
+      "erythromycine",
+      "grapefruit"
+    ],
+    "warnings": [
+      "Rare somnolence; prudence grossesse."
+    ]
+  },
+  {
+    "name": "ACTIFED",
+    "dci": "Pseudoephedrine / Triprolidine",
+    "class_name": "Decongestionnant + antihistaminique",
+    "indication": "Rhinite congestive, rhume",
+    "dosage": "1 cp x 3/j",
+    "default_dose": "1 cp x 3/j",
+    "contraindications": [
+      "HTA non controlee",
+      "glaucome a angle ferme",
+      "prostatisme",
+      "hyperthyroidie"
+    ],
+    "interactions": [
+      "IMAO",
+      "antidepresseur",
+      "beta-bloquant"
+    ],
+    "warnings": [
+      "Insomnie, tachycardie, HTA; prudence age > 65 ans."
+    ]
+  },
+  {
+    "name": "SUDAFED",
+    "dci": "Pseudoephedrine",
+    "class_name": "Decongestionnant",
+    "indication": "Congestion nasale",
+    "dosage": "1 cp x 3/j",
+    "default_dose": "60 mg x 3/j",
+    "contraindications": [
+      "HTA severe",
+      "glaucome a angle ferme",
+      "prostatisme",
+      "hyperthyroidie",
+      "IMAO"
+    ],
+    "interactions": [
+      "IMAO",
+      "antidepresseur",
+      "beta-bloquant"
+    ],
+    "warnings": [
+      "Insomnie, tachycardie; prudence HTA et cardiopathie."
+    ]
+  },
+  {
+    "name": "MUCOFLUX",
+    "dci": "Ambroxol",
+    "class_name": "Mucolytique",
+    "indication": "Toux productive, bronchite",
+    "dosage": "1 cp x 3/j ou 1 sachet x 3/j",
+    "default_dose": "30 mg x 3/j",
+    "contraindications": [
+      "aucune majeure"
+    ],
+    "interactions": [
+      "antitussif",
+      "antibiotique (augmente penetration)"
+    ],
+    "warnings": [
+      "Bien hydrater; eviter association antitussif."
+    ]
+  },
+  {
+    "name": "SOLVOCLEAR",
+    "dci": "Carbocysteine",
+    "class_name": "Mucolytique",
+    "indication": "Toux productive",
+    "dosage": "1 cp x 3/j",
+    "default_dose": "750 mg x 3/j",
+    "contraindications": [
+      "ulcere gastroduodenal actif"
+    ],
+    "interactions": [
+      "aucune majeure"
+    ],
+    "warnings": [
+      "Prudence ulcere gastroduodenal."
+    ]
+  },
+  {
+    "name": "SEPTRIN",
+    "dci": "Sulfamethoxazole / Trimethoprime",
+    "class_name": "Antibiotique ORL",
+    "indication": "Angine, sinusite, otite",
+    "dosage": "1 cp x 2/j pendant 5-10 jours",
+    "default_dose": "1 cp x 2/j",
+    "contraindications": [
+      "allergie sulfamide",
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "methotrexate",
+      "warfarine",
+      "phenytoine"
+    ],
+    "warnings": [
+      "Risque rash; surveiller NFS et creatinine."
+    ]
+  },
+  {
+    "name": "BIOSOLVON",
+    "dci": "Bromhexine",
+    "class_name": "Mucolytique",
+    "indication": "Toux productive",
+    "dosage": "1 cp x 3/j",
+    "default_dose": "8 mg x 3/j",
+    "contraindications": [
+      "aucune majeure"
+    ],
+    "interactions": [
+      "antitussif"
+    ],
+    "warnings": [
+      "Bien hydrater; eviter association antitussif."
+    ]
+  },
+  {
+    "name": "OTOSPORIN",
+    "dci": "Neomycine / Polymyxine B / Hydrocortisone",
+    "class_name": "Antibiotique + corticoide auriculaire",
+    "indication": "Otite externe",
+    "dosage": "3-4 gouttes x 3-4/j",
+    "default_dose": "3-4 gouttes x 3-4/j",
+    "contraindications": [
+      "perforation tympanique",
+      "infection virale",
+      "hypersensibilite aminoglucoside"
+    ],
+    "interactions": [
+      "autre nephrotoxique"
+    ],
+    "warnings": [
+      "Prudence insuffisance renale; ne pas utiliser si perforation tympanique."
+    ]
+  },
+  {
+    "name": "CERUMOL",
+    "dci": "Huile d amande douce / Dichlorobenzene",
+    "class_name": "Cerumenolytique",
+    "indication": "Bouchon de cerumen",
+    "dosage": "5 gouttes x 2/j pendant 3-4 jours",
+    "default_dose": "5 gouttes x 2/j x 3-4 jours",
+    "contraindications": [
+      "perforation tympanique",
+      "otite externe",
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune"
+    ],
+    "warnings": [
+      "Ne pas utiliser en cas de perforation tympanique suspectee."
+    ]
+  },
+  {
+    "name": "DORMANAL",
+    "dci": "Lidocaine / Phenol",
+    "class_name": "Anesthesique local ORL",
+    "indication": "Angine, douleur pharyngee",
+    "dosage": "Pulverisation x 3-6/j",
+    "default_dose": "Pulverisation x 3-6/j",
+    "contraindications": [
+      "hypersensibilide lidocaine",
+      "enfant < 6 ans"
+    ],
+    "interactions": [
+      "antiarythmique"
+    ],
+    "warnings": [
+      "Allergie locale possible; ne pas avaler immediatement."
+    ]
+  },
+  {
+    "name": "STREPSILS",
+    "dci": "Amylmetacresol / Dichlorobenzyl alcool",
+    "class_name": "Antiseptique local",
+    "indication": "Irritation pharyngee",
+    "dosage": "1 pastille x 4-6/j",
+    "default_dose": "1 pastille x 4-6/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune majeure"
+    ],
+    "warnings": [
+      "Ne pas donner aux jeunes enfants (risque etouffement)."
+    ]
+  },
+  {
+    "name": "BETADINE GARGARISME",
+    "dci": "Povidone-iode",
+    "class_name": "Antiseptique",
+    "indication": "Infection buccale, pharyngite",
+    "dosage": "Gargarisme x 3-4/j",
+    "default_dose": "Gargarisme x 3-4/j",
+    "contraindications": [
+      "hyperthyroidie",
+      "grossesse 2e-3e trimestre",
+      "allaitement",
+      "drepanocytose"
+    ],
+    "interactions": [
+      "Lugol",
+      "lithium"
+    ],
+    "warnings": [
+      "Ne pas avaler; prudence thyroidienne."
+    ]
+  },
+  {
+    "name": "DAIVONEX",
+    "dci": "Calcipotriol",
+    "class_name": "Vitamine D analog topique",
+    "indication": "Psoriasis en plaques",
+    "dosage": "1-2 applications/j",
+    "default_dose": "1-2 applications/j max 100 g/semaine",
+    "contraindications": [
+      "hypercalcemie",
+      "lithiase renale"
+    ],
+    "interactions": [
+      "aucune majeure topique"
+    ],
+    "warnings": [
+      "Irritation locale; ne pas depasser 100 g/semaine; risque hypercalcemie."
+    ]
+  },
+  {
+    "name": "CLOBEX",
+    "dci": "Clobetasol propionate",
+    "class_name": "Corticoide topique tres fort",
+    "indication": "Psoriasis, eczema rebelle, lichen",
+    "dosage": "1-2 applications/j pendant max 2 semaines",
+    "default_dose": "1-2 applications/j max 2 semaines",
+    "contraindications": [
+      "infection cutanee non traitee",
+      "acne",
+      "rosacee",
+      "ulcere cutane"
+    ],
+    "interactions": [
+      "aucune majeure topique"
+    ],
+    "warnings": [
+      "Atrophie cutanee, striae; ne pas utiliser sur visage ou plis."
+    ]
+  },
+  {
+    "name": "DIPROSALIC",
+    "dci": "Betamethasone / Acide salicylique",
+    "class_name": "Corticoide + keratolytique",
+    "indication": "Psoriasis, hyperkeratose",
+    "dosage": "1-2 applications/j",
+    "default_dose": "1-2 applications/j",
+    "contraindications": [
+      "infection cutanee",
+      "acne",
+      "rosacee"
+    ],
+    "interactions": [
+      "aucune majeure topique"
+    ],
+    "warnings": [
+      "Atrophie cutanee; eviter visage et plis."
+    ]
+  },
+  {
+    "name": "CORTANCYL 5 mg",
+    "dci": "Prednisone",
+    "class_name": "Corticoide systemique",
+    "indication": "Dermatoses severes, allergies, collagenoses",
+    "dosage": "Selon indication et poids",
+    "default_dose": "0.5-1 mg/kg/j puis reduction",
+    "contraindications": [
+      "infection non controlee",
+      "herpes simplex dissemine",
+      "gastrite active"
+    ],
+    "interactions": [
+      "anticoagulant",
+      "antidiabetique",
+      "AINS",
+      "vaccin vivant"
+    ],
+    "warnings": [
+      "Osteoporose, HTA, diabete, infection, surdosage adrenal; reduction progressive."
+    ]
+  },
+  {
+    "name": "ELIDEL",
+    "dci": "Pimecrolimus",
+    "class_name": "Inhibiteur calcineurine topique",
+    "indication": "Dermatite atopique",
+    "dosage": "2 applications/j",
+    "default_dose": "2 applications/j",
+    "contraindications": [
+      "infection cutanee active",
+      "lymphome",
+      "Netherton"
+    ],
+    "interactions": [
+      "CYP3A4 inhibitueur"
+    ],
+    "warnings": [
+      "Brulure locale; risque lymphome theorique; evier soleil."
+    ]
+  },
+  {
+    "name": "PROTOPIC",
+    "dci": "Tacrolimus",
+    "class_name": "Inhibiteur calcineurine topique",
+    "indication": "Dermatite atopique severe",
+    "dosage": "2 applications/j",
+    "default_dose": "2 applications/j",
+    "contraindications": [
+      "infection cutanee active",
+      "lymphome"
+    ],
+    "interactions": [
+      "CYP3A4 inhibiteur",
+      "erythromycine"
+    ],
+    "warnings": [
+      "Brulure, prurit; eviter soleil et UV; prudence grossesse."
+    ]
+  },
+  {
+    "name": "LAMISIL CREME",
+    "dci": "Terbinafine",
+    "class_name": "Antifongique topique",
+    "indication": "Mycoses cutanees (pied d athlete, teigne)",
+    "dosage": "1-2 applications/j pendant 1-2 semaines",
+    "default_dose": "1 application/j x 1-2 semaines",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune majeure topique"
+    ],
+    "warnings": [
+      "Irritation locale; traitement complet meme si amelioration precoce."
+    ]
+  },
+  {
+    "name": "DAKTARIN",
+    "dci": "Miconazole",
+    "class_name": "Antifongique topique",
+    "indication": "Mycoses cutanees, candidoses intertrigo",
+    "dosage": "2 applications/j",
+    "default_dose": "2 applications/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "anticoagulant oral"
+    ],
+    "warnings": [
+      "Irritation locale; rare interaction anticoagulant oral topique."
+    ]
+  },
+  {
+    "name": "CANESTENE",
+    "dci": "Clotrimazole",
+    "class_name": "Antifongique topique",
+    "indication": "Mycoses cutanees, mycoses genitales",
+    "dosage": "2-3 applications/j",
+    "default_dose": "2-3 applications/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune majeure"
+    ],
+    "warnings": [
+      "Irritation locale; traitement complet recommandee."
+    ]
+  },
+  {
+    "name": "BETADINE DERMIQUE",
+    "dci": "Povidone-iode",
+    "class_name": "Antiseptique cutane",
+    "indication": "Desinfection cutanee, plaies",
+    "dosage": "Application locale x 2-3/j",
+    "default_dose": "Application x 2-3/j",
+    "contraindications": [
+      "hyperthyroidie",
+      "drepanocytose",
+      "grossesse 2e-3e trimestre",
+      "allaitement",
+      "hypersensibilite iode"
+    ],
+    "interactions": [
+      "mercure",
+      "argent"
+    ],
+    "warnings": [
+      "Ne pas utiliser sur grande surface ni prolonge; prudence thyroidienne."
+    ]
+  },
+  {
+    "name": "BIAFINE",
+    "dci": "Trolamine",
+    "class_name": "Emollient reparateur",
+    "indication": "Brulures superficielles, radiodermite, plaies",
+    "dosage": "2-3 applications/j en couche epaisse",
+    "default_dose": "2-3 applications/j",
+    "contraindications": [
+      "hypersensibilite",
+      "infection cutanee non traitee"
+    ],
+    "interactions": [
+      "aucune"
+    ],
+    "warnings": [
+      "Nettoyer avant application; ne pas utiliser sur brulure profonde."
+    ]
+  },
+  {
+    "name": "CICALFATE",
+    "dci": "Sulfate de cuivre / Sulfate de zinc",
+    "class_name": "Reparateur cutane",
+    "indication": "Irritations, erytheme fessier, dermatite du siege",
+    "dosage": "2-3 applications/j",
+    "default_dose": "2-3 applications/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune"
+    ],
+    "warnings": [
+      "Nettoyer avant application."
+    ]
+  },
+  {
+    "name": "CETAPHIL",
+    "dci": "Emollient",
+    "class_name": "Emollient",
+    "indication": "Secheresse cutanee, dermatite atopique",
+    "dosage": "2-3 applications/j",
+    "default_dose": "2-3 applications/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune"
+    ],
+    "warnings": [
+      "Usage externe uniquement."
+    ]
+  },
+  {
+    "name": "ACCUZOLE",
+    "dci": "Benzoyl peroxide",
+    "class_name": "Keratolytique antiseptique",
+    "indication": "Acne",
+    "dosage": "1-2 applications/j",
+    "default_dose": "1 application/j puis 2/j",
+    "contraindications": [
+      "hypersensibilite",
+      "eczema"
+    ],
+    "interactions": [
+      "retinoides topiques"
+    ],
+    "warnings": [
+      "Secheresse, irritation; decoloration vetements; eviter soleil."
+    ]
+  },
+  {
+    "name": "DIFFERINE",
+    "dci": "Adapalene",
+    "class_name": "Retinoide topique",
+    "indication": "Acne comedonienne et papulo-pustuleuse",
+    "dosage": "1 application le soir",
+    "default_dose": "1 application le soir",
+    "contraindications": [
+      "grossesse",
+      "allaitement",
+      "eczema",
+      "rosacee"
+    ],
+    "interactions": [
+      "autre retinoide",
+      "peroxide benzoyle",
+      "acide glycolique"
+    ],
+    "warnings": [
+      "Photosensibilite; irritation initiale; eviter grossesse; efficacite a 8-12 semaines."
+    ]
+  },
+  {
+    "name": "ROACCUTANE 10",
+    "dci": "Isotretinoine",
+    "class_name": "Retinoide systemique",
+    "indication": "Acne severe, resistante",
+    "dosage": "0.5-1 mg/kg/j",
+    "default_dose": "Dose individualisee par dermatologue",
+    "contraindications": [
+      "grossesse",
+      "allaitement",
+      "insuffisance hepatique severe",
+      "hypertriglyceridemie severe",
+      "hypervitaminose A"
+    ],
+    "interactions": [
+      "tetracycline",
+      "vitamine A",
+      "anticonvulsivant",
+      "corticoide"
+    ],
+    "warnings": [
+      "Teratogene absolu; contraception obligatoire; monitoring hepatique et lipides; depression suicidaire."
+    ]
+  },
+  {
+    "name": "STIEVA 0.05%",
+    "dci": "Tretinoine",
+    "class_name": "Retinoide topique",
+    "indication": "Acne, rides, hyperpigmentation",
+    "dosage": "1 application le soir",
+    "default_dose": "1 application le soir",
+    "contraindications": [
+      "grossesse",
+      "allaitement",
+      "eczema",
+      "rosacee"
+    ],
+    "interactions": [
+      "peroxide benzoyle",
+      "acide glycolique",
+      "vitamine C"
+    ],
+    "warnings": [
+      "Photosensibilite; irritation initiale; eviter grossesse."
+    ]
+  },
+  {
+    "name": "VENTOLINE 100",
+    "dci": "Salbutamol",
+    "class_name": "Beta-2 agoniste de courte duree",
+    "indication": "Asthme, BPCO, bronchospasme",
+    "dosage": "1-2 inhalations en cas de besoin",
+    "default_dose": "100-200 mcg en cas de besoin",
+    "contraindications": [
+      "hypersensibilite",
+      "tachycardie"
+    ],
+    "interactions": [
+      "beta-bloquant non selectif",
+      "diuretique",
+      "digoxine"
+    ],
+    "warnings": [
+      "Tachycardie, tremblements; ne pas depasser 8 inhalations/j; prudence cardiopathie."
+    ]
+  },
+  {
+    "name": "SALBUTAMOL 4 mg",
+    "dci": "Salbutamol",
+    "class_name": "Bronchodilatateur",
+    "indication": "Asthme, bronchospasme",
+    "dosage": "1 cp x 3-4/j",
+    "default_dose": "4 mg x 3-4/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "diuretique"
+    ],
+    "warnings": [
+      "Tachycardie, tremblements; prudence cardiopathie."
+    ]
+  },
+  {
+    "name": "SERETIDE 250",
+    "dci": "Salmeterol / Fluticasone",
+    "class_name": "Beta-2 agoniste long + corticoide inhale",
+    "indication": "Asthme modere a severe, BPCO",
+    "dosage": "2 inhalations x 2/j",
+    "default_dose": "2 inhalations x 2/j",
+    "contraindications": [
+      "hypersensibilite",
+      "infection respiratoire aigue non traitee"
+    ],
+    "interactions": [
+      "ketoconazole",
+      "ritonavir",
+      "beta-bloquant"
+    ],
+    "warnings": [
+      "Ne pas arreter brusquement; rincer bouche apres; prudence infection."
+    ]
+  },
+  {
+    "name": "SYMBICORT 200/6",
+    "dci": "Budesonide / Formoterol",
+    "class_name": "Corticoide + Beta-2 agoniste long",
+    "indication": "Asthme, BPCO",
+    "dosage": "1-2 inhalations x 2/j",
+    "default_dose": "1-2 inhalations x 2/j",
+    "contraindications": [
+      "hypersensibilite",
+      "infection respiratoire aigue non traitee"
+    ],
+    "interactions": [
+      "ketoconazole",
+      "ritonavir",
+      "beta-bloquant"
+    ],
+    "warnings": [
+      "Rincer bouche apres; prudence infection; ne pas depasser dose."
+    ]
+  },
+  {
+    "name": "PULMICORT 200",
+    "dci": "Budesonide",
+    "class_name": "Corticoide inhale",
+    "indication": "Asthme",
+    "dosage": "1-2 inhalations x 2/j",
+    "default_dose": "1-2 inhalations x 2/j",
+    "contraindications": [
+      "hypersensibilite",
+      "infection respiratoire aigue non traitee"
+    ],
+    "interactions": [
+      "ketoconazole",
+      "ritonavir"
+    ],
+    "warnings": [
+      "Rincer bouche apres; prudence infection."
+    ]
+  },
+  {
+    "name": "SPIRIVA 18",
+    "dci": "Tiotropium",
+    "class_name": "Anticholinergique inhale long",
+    "indication": "BPCO",
+    "dosage": "1 inhalation/j",
+    "default_dose": "18 mcg/j",
+    "contraindications": [
+      "hypersensibilite",
+      "glaucome a angle ferme",
+      "retention urinaire"
+    ],
+    "interactions": [
+      "anticholinergique",
+      "amantadine"
+    ],
+    "warnings": [
+      "Secheresse bouche, constipation, retention urinaire; rincer bouche."
+    ]
+  },
+  {
+    "name": "ATROVENT 20",
+    "dci": "Ipratropium",
+    "class_name": "Anticholinergique inhale de courte duree",
+    "indication": "BPCO, bronchospasme",
+    "dosage": "2 inhalations x 4/j",
+    "default_dose": "2 inhalations x 4/j",
+    "contraindications": [
+      "hypersensibilite",
+      "glaucome a angle ferme"
+    ],
+    "interactions": [
+      "anticholinergique"
+    ],
+    "warnings": [
+      "Secheresse bouche, vision trouble; prudence glaucome."
+    ]
+  },
+  {
+    "name": "THEOPHYLLINE 200",
+    "dci": "Theophylline",
+    "class_name": "Methylxanthine",
+    "indication": "Asthme, BPCO",
+    "dosage": "1 cp x 2/j",
+    "default_dose": "200-400 mg x 2/j",
+    "contraindications": [
+      "arythmie",
+      "epilepsie",
+      "insuffisance hepatique severe",
+      "grossesse"
+    ],
+    "interactions": [
+      "ciprofloxacine",
+      "erythromycine",
+      "cimetidine",
+      "phenytoine",
+      "rifampicine"
+    ],
+    "warnings": [
+      "Etroite marge therapeutique; surveiller taux sanguin; risque convulsions."
+    ]
+  },
+  {
+    "name": "MONTELUKAST 10",
+    "dci": "Montelukast",
+    "class_name": "Antagoniste leukotriene",
+    "indication": "Asthme allergique, rhinite allergique",
+    "dosage": "1 cp le soir",
+    "default_dose": "10 mg/j le soir",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "phenobarbital",
+      "rifampicine",
+      "carbamazepine"
+    ],
+    "warnings": [
+      "Risque neuropsychiatrique (reves anormaux, agitation, depression); surveillance comportementale."
+    ]
+  },
+  {
+    "name": "SINGULAIR 4 mg",
+    "dci": "Montelukast",
+    "class_name": "Antagoniste leukotriene pediatrique",
+    "indication": "Asthme pediatrique",
+    "dosage": "1 cp le soir",
+    "default_dose": "4-5 mg/j le soir selon age",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "phenobarbital",
+      "rifampicine"
+    ],
+    "warnings": [
+      "Risque neuropsychiatrique; surveillance parents."
+    ]
+  },
+  {
+    "name": "NAC 200",
+    "dci": "Acetylcysteine",
+    "class_name": "Mucolytique antioxydant",
+    "indication": "Toux productive, bronchite, intoxication paracetamol",
+    "dosage": "1 cp x 2-3/j",
+    "default_dose": "200 mg x 3/j ou 600 mg x 2/j",
+    "contraindications": [
+      "asthme bronchique (risque bronchospasme)",
+      "ulcere gastroduodenal"
+    ],
+    "interactions": [
+      "antitussif",
+      "nitroglycerine"
+    ],
+    "warnings": [
+      "Risque bronchospasme asthmatique; eviter association antitussif."
+    ]
+  },
+  {
+    "name": "TELFAST 120",
+    "dci": "Fexofenadine",
+    "class_name": "Antihistaminique H1 non sedatif",
+    "indication": "Rhinite allergique, urticaire",
+    "dosage": "1 cp x 2/j",
+    "default_dose": "120-180 mg x 1-2/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "ketoconazole",
+      "erythromycine",
+      "jus de pamplemousse"
+    ],
+    "warnings": [
+      "Prudence insuffisance renale; eviter jus de pamplemousse."
+    ]
+  },
+  {
+    "name": "GLUCOPHAGE 500",
+    "dci": "Metformine",
+    "class_name": "Biguanide",
+    "indication": "Diabete type 2, syndrome des ovaires polykystiques",
+    "dosage": "1 cp x 2-3/j au cours des repas",
+    "default_dose": "500 mg x 2-3/j",
+    "contraindications": [
+      "insuffisance renale severe (DFG < 30)",
+      "acidocetose",
+      "insuffisance hepatique severe",
+      "choc"
+    ],
+    "interactions": [
+      "contrastes iodes",
+      "cimetidine",
+      "alcool"
+    ],
+    "warnings": [
+      "Risque acidose lactique; surveiller DFG; arreter si contrastes iodes."
+    ]
+  },
+  {
+    "name": "GLUCOPHAGE 850",
+    "dci": "Metformine",
+    "class_name": "Biguanide",
+    "indication": "Diabete type 2",
+    "dosage": "1 cp x 2-3/j",
+    "default_dose": "850 mg x 2-3/j",
+    "contraindications": [
+      "insuffisance renale severe",
+      "acidocetose",
+      "insuffisance hepatique severe"
+    ],
+    "interactions": [
+      "contrastes iodes",
+      "cimetidine",
+      "alcool"
+    ],
+    "warnings": [
+      "Risque acidose lactique; surveiller DFG."
+    ]
+  },
+  {
+    "name": "DAONIL 5",
+    "dci": "Glibenclamide",
+    "class_name": "Sulfamide hypoglycemiant",
+    "indication": "Diabete type 2",
+    "dosage": "1 cp/j avant petit-dejeuner",
+    "default_dose": "2.5-5 mg/j",
+    "contraindications": [
+      "insuffisance hepatique severe",
+      "insuffisance renale severe",
+      "grossesse",
+      "allaitement",
+      "cetonurie"
+    ],
+    "interactions": [
+      "sulfamide",
+      "anticoagulant",
+      "beta-bloquant",
+      "cimetidine",
+      "alcool"
+    ],
+    "warnings": [
+      "Risque hypoglycemie severe et prolongee; prudence age > 65 ans."
+    ]
+  },
+  {
+    "name": "DIAMICRON 30",
+    "dci": "Gliclazide",
+    "class_name": "Sulfamide hypoglycemiant",
+    "indication": "Diabete type 2",
+    "dosage": "1 cp/j avant petit-dejeuner",
+    "default_dose": "30-60 mg/j",
+    "contraindications": [
+      "insuffisance hepatique severe",
+      "insuffisance renale severe",
+      "grossesse",
+      "cetonurie"
+    ],
+    "interactions": [
+      "sulfamide",
+      "anticoagulant",
+      "beta-bloquant",
+      "alcool"
+    ],
+    "warnings": [
+      "Risque hypoglycemie; prudence age et insuffisance renale."
+    ]
+  },
+  {
+    "name": "AMARYL 2",
+    "dci": "Glimepiride",
+    "class_name": "Sulfamide hypoglycemiant",
+    "indication": "Diabete type 2",
+    "dosage": "1 cp/j avant petit-dejeuner",
+    "default_dose": "1-4 mg/j",
+    "contraindications": [
+      "insuffisance hepatique severe",
+      "insuffisance renale severe",
+      "grossesse",
+      "cetonurie"
+    ],
+    "interactions": [
+      "sulfamide",
+      "anticoagulant",
+      "beta-bloquant",
+      "alcool"
+    ],
+    "warnings": [
+      "Risque hypoglycemie; prudence age et insuffisance renale."
+    ]
+  },
+  {
+    "name": "LANTUS",
+    "dci": "Insuline glargine",
+    "class_name": "Insuline basale longue",
+    "indication": "Diabete type 1 et 2",
+    "dosage": "Selon protocole et glycemies",
+    "default_dose": "Dose individualisee",
+    "contraindications": [
+      "hypoglycemie",
+      "allergie insuline"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "alcool",
+      "AINS",
+      "IEC"
+    ],
+    "warnings": [
+      "Hypoglycemie; rotation sites injection; ne pas melanger dans seringue."
+    ]
+  },
+  {
+    "name": "NOVORAPID",
+    "dci": "Insuline asparte",
+    "class_name": "Insuline rapide",
+    "indication": "Diabete type 1 et 2",
+    "dosage": "Selon ratio insuline/glucides et glycemie",
+    "default_dose": "Dose individualisee",
+    "contraindications": [
+      "hypoglycemie",
+      "allergie insuline"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "alcool",
+      "AINS",
+      "IEC"
+    ],
+    "warnings": [
+      "Hypoglycemie; administrer avant repas; rotation sites."
+    ]
+  },
+  {
+    "name": "HUMALOG",
+    "dci": "Insuline lispro",
+    "class_name": "Insuline ultra-rapide",
+    "indication": "Diabete type 1 et 2",
+    "dosage": "Selon ratio et glycemie",
+    "default_dose": "Dose individualisee",
+    "contraindications": [
+      "hypoglycemie",
+      "allergie insuline"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "alcool",
+      "AINS"
+    ],
+    "warnings": [
+      "Hypoglycemie; administrer juste avant repas."
+    ]
+  },
+  {
+    "name": "NOVOMIX 30",
+    "dci": "Insuline asparte biphasic",
+    "class_name": "Insuline mixte",
+    "indication": "Diabete type 2",
+    "dosage": "Selon glycemies a jeun et post-prandiales",
+    "default_dose": "Dose individualisee",
+    "contraindications": [
+      "hypoglycemie",
+      "allergie insuline"
+    ],
+    "interactions": [
+      "beta-bloquant",
+      "alcool",
+      "AINS"
+    ],
+    "warnings": [
+      "Hypoglycemie; bien agiter; rotation sites."
+    ]
+  },
+  {
+    "name": "LEVOTHYROX 50",
+    "dci": "Levothyroxine",
+    "class_name": "Hormone thyroidienne",
+    "indication": "Hypothyroidie",
+    "dosage": "1 cp/j a jeun 30 min avant petit-dejeuner",
+    "default_dose": "50-150 mcg/j selon TSH",
+    "contraindications": [
+      "thyrotoxicose non traitee",
+      "insuffisance surrenale non traitee",
+      "infarctus recent"
+    ],
+    "interactions": [
+      "fer",
+      "calcium",
+      "antiacide",
+      "anticonvulsivant",
+      "sertraline",
+      "carbamazepine"
+    ],
+    "warnings": [
+      "Espace avec fer/calcium/antiacide de 4h; ajuster selon TSH; debuter bas et augmenter."
+    ]
+  },
+  {
+    "name": "LEVOTHYROX 100",
+    "dci": "Levothyroxine",
+    "class_name": "Hormone thyroidienne",
+    "indication": "Hypothyroidie",
+    "dosage": "1 cp/j a jeun",
+    "default_dose": "100-200 mcg/j",
+    "contraindications": [
+      "thyrotoxicose",
+      "insuffisance surrenale non traitee",
+      "infarctus recent"
+    ],
+    "interactions": [
+      "fer",
+      "calcium",
+      "antiacide",
+      "anticonvulsivant"
+    ],
+    "warnings": [
+      "Espace avec fer/calcium de 4h; ajuster selon TSH."
+    ]
+  },
+  {
+    "name": "ANDROCUR 50",
+    "dci": "Cyproterone acetate",
+    "class_name": "Anti-androgene + progestatif",
+    "indication": "Hirsutisme severe, acnee hormonale, hypersexualite",
+    "dosage": "1 cp/j ou 2 cp/j selon indication",
+    "default_dose": "50-100 mg/j",
+    "contraindications": [
+      "insuffisance hepatique severe",
+      "meningiome",
+      "trombose",
+      "grossesse",
+      "cancer hepatique"
+    ],
+    "interactions": [
+      "contraceptif oral",
+      "statine",
+      "grapefruit"
+    ],
+    "warnings": [
+      "Risque meningiome, hepatotoxicite, thrombose; surveillance hepatique et imagerie cerebrale."
+    ]
+  },
+  {
+    "name": "EUTHYROX 100",
+    "dci": "Levothyroxine",
+    "class_name": "Hormone thyroidienne",
+    "indication": "Hypothyroidie",
+    "dosage": "1 cp/j a jeun",
+    "default_dose": "100 mcg/j",
+    "contraindications": [
+      "thyrotoxicose",
+      "insuffisance surrenale"
+    ],
+    "interactions": [
+      "fer",
+      "calcium",
+      "antiacide"
+    ],
+    "warnings": [
+      "Espace avec fer/calcium de 4h; ajuster selon TSH."
+    ]
+  },
+  {
+    "name": "DEPAKINE 500",
+    "dci": "Valproate de sodium",
+    "class_name": "Anticonvulsivant",
+    "indication": "Epilepsie, migraine, trouble bipolaire",
+    "dosage": "Selon indication et taux sanguin",
+    "default_dose": "500-1500 mg/j",
+    "contraindications": [
+      "grossesse",
+      "insuffisance hepatique severe",
+      "pancreatite",
+      "porphyrie"
+    ],
+    "interactions": [
+      "aspirine",
+      "carbamazepine",
+      "lamotrigine",
+      "warfarine"
+    ],
+    "warnings": [
+      "Teratogene; surveillance hepatique, plaquettes, taux sanguin; prise de poids."
+    ]
+  },
+  {
+    "name": "TEGRETOL 200",
+    "dci": "Carbamazepine",
+    "class_name": "Anticonvulsivant",
+    "indication": "Epilepsie, nevralgie du trijumeau",
+    "dosage": "Selon taux sanguin et indication",
+    "default_dose": "400-1200 mg/j",
+    "contraindications": [
+      "insuffisance hepatique severe",
+      "arythmie AV",
+      "allergie tricyclique",
+      "IMAO",
+      "grossesse"
+    ],
+    "interactions": [
+      "contraceptif oral",
+      "warfarine",
+      "antidepresseur",
+      "antipsychotique",
+      "isoniazide",
+      "erythromycine"
+    ],
+    "warnings": [
+      "Risque Stevens-Johnson, toxicite hepatique, hyponatremie; surveillance NFS et hepatique."
+    ]
+  },
+  {
+    "name": "LAMICTAL 50",
+    "dci": "Lamotrigine",
+    "class_name": "Anticonvulsivant",
+    "indication": "Epilepsie, trouble bipolaire",
+    "dosage": "Titration lente selon schema",
+    "default_dose": "25 mg/j semaine 1 puis augmentation progressive",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "valproate",
+      "carbamazepine",
+      "phenytoine",
+      "contraceptif oral"
+    ],
+    "warnings": [
+      "Risque rash severe (Stevens-Johnson); titration lente obligatoire; contraceptif oral diminue efficacite."
+    ]
+  },
+  {
+    "name": "RIVOTRIL 2",
+    "dci": "Clonazepam",
+    "class_name": "Benzodiazepine anticonvulsivante",
+    "indication": "Epilepsie myoclonique, crises d absence",
+    "dosage": "Selon indication et tolerance",
+    "default_dose": "0.5-2 mg/j",
+    "contraindications": [
+      "insuffisance respiratoire severe",
+      "myasthenie",
+      "apnee du sommeil"
+    ],
+    "interactions": [
+      "alcool",
+      "antidepresseur sedatif",
+      "antihistaminique",
+      "morphine"
+    ],
+    "warnings": [
+      "Dependance, somnolence; reduction progressive; risque chutes age."
+    ]
+  },
+  {
+    "name": "TOPAMAX 25",
+    "dci": "Topiramate",
+    "class_name": "Anticonvulsivant",
+    "indication": "Epilepsie, migraine",
+    "dosage": "Titration progressive",
+    "default_dose": "25 mg/j semaine 1 puis 50 mg/j",
+    "contraindications": [
+      "grossesse",
+      "allaitement",
+      "insuffisance renale severe",
+      "lithiase renale"
+    ],
+    "interactions": [
+      "contraceptif oral",
+      "metformine",
+      "lithium"
+    ],
+    "warnings": [
+      "Perte de poids, paresthesies, trouble cognitif, lithiase renale; effet contraceptif oral reduit."
+    ]
+  },
+  {
+    "name": "KEPPRA 500",
+    "dci": "Levetiracetam",
+    "class_name": "Anticonvulsivant",
+    "indication": "Epilepsie partielle et generalisee",
+    "dosage": "500 mg x 2/j puis titration",
+    "default_dose": "1000-3000 mg/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "aucune majeure"
+    ],
+    "warnings": [
+      "Troubles comportementaux, somnolence; ajustement insuffisance renale."
+    ]
+  },
+  {
+    "name": "LYRICA 75",
+    "dci": "Pregabaline",
+    "class_name": "Anticonvulsivant / Analgesique neuropathique",
+    "indication": "Neuropathie douloureuse, fibromyalgie, anxiete generalisee",
+    "dosage": "75 mg x 2/j puis titration",
+    "default_dose": "150-600 mg/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "alcool",
+      "sedatif",
+      "morphine"
+    ],
+    "warnings": [
+      "Prise de poids, oedemes, somnolence; reduction progressive."
+    ]
+  },
+  {
+    "name": "NEURONTIN 300",
+    "dci": "Gabapentine",
+    "class_name": "Anticonvulsivant / Analgesique neuropathique",
+    "indication": "Neuropathie douloureuse, epilepsie partielle",
+    "dosage": "300 mg x 3/j puis titration",
+    "default_dose": "900-3600 mg/j",
+    "contraindications": [
+      "hypersensibilite"
+    ],
+    "interactions": [
+      "morphine",
+      "antiacide"
+    ],
+    "warnings": [
+      "Somnolence, vertiges; ajustement insuffisance renale; espace avec antiacide de 2h."
+    ]
+  },
+  {
+    "name": "SERC 16",
+    "dci": "Betahistine",
+    "class_name": "Antihistaminique H1 agoniste",
+    "indication": "Vertige de Meniere, vertige positionnel",
+    "dosage": "1 cp x 3/j",
+    "default_dose": "16-24 mg x 3/j",
+    "contraindications": [
+      "pheochromocytome",
+      "grossesse",
+      "allaitement"
+    ],
+    "interactions": [
+      "antihistaminique H1",
+      "beta-bloquant"
+    ],
+    "warnings": [
+      "Prudence asthme, ulcere; rares reactions allergiques."
+    ]
+  },
+  {
+    "name": "STILNOX 10",
+    "dci": "Zolpidem",
+    "class_name": "Hypnotique imidazopyridine",
+    "indication": "Insomnie aigue",
+    "dosage": "1 cp au coucher",
+    "default_dose": "10 mg au coucher (5 mg si age > 65 ans)",
+    "contraindications": [
+      "insuffisance respiratoire severe",
+      "apnee du sommeil",
+      "myasthenie"
+    ],
+    "interactions": [
+      "alcool",
+      "antidepresseur sedatif",
+      "antihistaminique",
+      "morphine"
+    ],
+    "warnings": [
+      "Dependance, amnesie anterograde, somnambulisme; courte duree recommandee; delai > 8h avant conduite."
+    ]
+  },
+  {
+    "name": "XANAX 0.5",
+    "dci": "Alprazolam",
+    "class_name": "Benzodiazepine anxiolytique",
+    "indication": "Anxiete generalisee, crise d angoisse",
+    "dosage": "0.25-0.5 mg x 3/j",
+    "default_dose": "0.5-1.5 mg/j",
+    "contraindications": [
+      "insuffisance respiratoire severe",
+      "myasthenie",
+      "apnee du sommeil"
+    ],
+    "interactions": [
+      "alcool",
+      "antidepresseur sedatif",
+      "antihistaminique",
+      "morphine"
+    ],
+    "warnings": [
+      "Dependance severe; reduction progressive obligatoire; risque chutes age."
+    ]
+  },
+  {
+    "name": "LEXOMIL 6",
+    "dci": "Bromazepam",
+    "class_name": "Benzodiazepine anxiolytique",
+    "indication": "Anxiete, angoisse",
+    "dosage": "1-2 cp x 2-3/j",
+    "default_dose": "6-18 mg/j",
+    "contraindications": [
+      "insuffisance respiratoire severe",
+      "myasthenie"
+    ],
+    "interactions": [
+      "alcool",
+      "sedatif",
+      "morphine"
+    ],
+    "warnings": [
+      "Dependance; reduction progressive; somnolence."
+    ]
+  },
+  {
+    "name": "SEROPRAM 20",
+    "dci": "Citalopram",
+    "class_name": "ISRS antidepresseur",
+    "indication": "Depression, trouble anxieux",
+    "dosage": "1 cp/j le matin",
+    "default_dose": "20-40 mg/j",
+    "contraindications": [
+      "hypersensibilite",
+      "allongement QT connu",
+      "prise de pimozide"
+    ],
+    "interactions": [
+      "IMAO",
+      "tramadol",
+      "lithium",
+      "warfarine",
+      "omeprazole"
+    ],
+    "warnings": [
+      "Risque syndrome serotoninergique si IMAO; allongement QT; prudence si < 18 ans."
+    ]
+  },
+  {
+    "name": "PROZAC 20",
+    "dci": "Fluoxetine",
+    "class_name": "ISRS antidepresseur",
+    "indication": "Depression, TOC, boulimie",
+    "dosage": "1 cp/j le matin",
+    "default_dose": "20 mg/j",
+    "contraindications": [
+      "hypersensibilite",
+      "IMAO",
+      "thioridazine"
+    ],
+    "interactions": [
+      "IMAO",
+      "tramadol",
+      "lithium",
+      "warfarine",
+      "perte poids medicament"
+    ],
+    "warnings": [
+      "Risque syndrome serotoninergique si IMAO; agitation initiale; surveiller poids et humeur."
+    ]
+  },
+  {
+    "name": "EFFEXOR 75",
+    "dci": "Venlafaxine",
+    "class_name": "IRSNA antidepresseur",
+    "indication": "Depression, anxiete generalisee",
+    "dosage": "1 cp/j le matin",
+    "default_dose": "75-225 mg/j",
+    "contraindications": [
+      "hypersensibilite",
+      "IMAO",
+      "allongement QT",
+      "HTA severe"
+    ],
+    "interactions": [
+      "IMAO",
+      "tramadol",
+      "lithium",
+      "warfarine",
+      "anticoagulant"
+    ],
+    "warnings": [
+      "Risque HTA, syndrome serotoninergique; surveillance tension et humeur."
+    ]
+  },
+  {
+    "name": "CYMBALTA 30",
+    "dci": "Duloxetine",
+    "class_name": "IRSNA antidepresseur",
+    "indication": "Depression, douleur neuropathique, fibromyalgie",
+    "dosage": "1 cp/j",
+    "default_dose": "30-60 mg/j",
+    "contraindications": [
+      "hypersensibilite",
+      "IMAO",
+      "insuffisance hepatique severe",
+      "insuffisance renale severe"
+    ],
+    "interactions": [
+      "IMAO",
+      "tramadol",
+      "lithium",
+      "warfarine",
+      "CYP1A2 inhibiteur"
+    ],
+    "warnings": [
+      "Risque hepatotoxicite; surveillance tension et humeur; prudence insuffisance renale."
+    ]
   }
 ]

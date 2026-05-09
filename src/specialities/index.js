@@ -12,9 +12,10 @@ export const TAB_REGISTRY = {
   "profile":    { label: "Profil Cardio",    icon: "ShieldCheck", group: "clinique" },
   "scores":     { label: "Scores",           icon: "AlertTriangle",group: "clinique" },
   "specialty":  { label: "Données Spé.",     icon: "Sparkles",    group: "clinique" },
-  "imaging":    { label: "Imagerie/Labs",    icon: "Stethoscope", group: "diagnostic" },
-  "diagnosis":  { label: "Diagnostic",       icon: "Pill",        group: "diagnostic" },
-  "fiche":      { label: "Fiche Patient",    icon: "UserRound",   group: "gestion" },
+  "imaging":    { label: "Imagerie/Labs",    icon: "Stethoscope",   group: "diagnostic" },
+  "diagnosis":  { label: "Diagnostic",       icon: "Pill",          group: "diagnostic" },
+  "bilan":      { label: "Bilan / Examens",  icon: "FlaskConical",  group: "diagnostic" },
+  "fiche":      { label: "Fiche Patient",    icon: "UserRound",     group: "gestion" },
   "historique": { label: "Historique",       icon: "Clock",       group: "gestion" },
   "followup":   { label: "Suivi",            icon: "CalendarDays",group: "gestion" },
   "docs":       { label: "Documents",        icon: "FileImage",   group: "gestion" },
@@ -33,7 +34,7 @@ export const SPECIALITIES = {
     dashboard_title: "Cabinet de Médecine Générale",
     patient_tabs: [
       "new-visit", "vitals", "bmi", "scores", "imaging",
-      "specialty", "diagnosis", "followup", "fiche", "historique",
+      "specialty", "diagnosis", "bilan", "followup", "fiche", "historique",
       "docs", "templates", "ai"
     ],
     specialty_tab_label: "Données Générales",
@@ -73,7 +74,7 @@ export const SPECIALITIES = {
     dashboard_title: "Cabinet de Cardiologie",
     patient_tabs: [
       "new-visit", "profile", "vitals", "bmi", "ecg", "scores",
-      "imaging", "specialty", "diagnosis", "followup", "fiche",
+      "imaging", "specialty", "diagnosis", "bilan", "followup", "fiche",
       "historique", "docs", "templates", "ai"
     ],
     specialty_tab_label: "Données Cardio",
@@ -115,7 +116,7 @@ export const SPECIALITIES = {
     color: "#6366f1",
     dashboard_title: "Cabinet d'Ophtalmologie",
     patient_tabs: [
-      "new-visit", "specialty", "imaging", "diagnosis",
+      "new-visit", "specialty", "imaging", "diagnosis", "bilan",
       "followup", "fiche", "historique", "docs", "templates", "ai"
     ],
     specialty_tab_label: "Examen Ophtalmologique",
@@ -163,7 +164,7 @@ export const SPECIALITIES = {
     color: "#0ea5e9",
     dashboard_title: "Cabinet de Radiologie",
     patient_tabs: [
-      "new-visit", "specialty", "imaging", "diagnosis",
+      "new-visit", "specialty", "imaging", "diagnosis", "bilan",
       "fiche", "historique", "docs", "templates", "ai"
     ],
     specialty_tab_label: "Compte Rendu Radiologique",
@@ -200,7 +201,7 @@ export const SPECIALITIES = {
     color: "#f59e0b",
     dashboard_title: "Cabinet ORL",
     patient_tabs: [
-      "new-visit", "specialty", "imaging", "diagnosis",
+      "new-visit", "specialty", "imaging", "diagnosis", "bilan",
       "followup", "fiche", "historique", "docs", "templates", "ai"
     ],
     specialty_tab_label: "Examen ORL",
@@ -242,7 +243,7 @@ export const SPECIALITIES = {
     color: "#ec4899",
     dashboard_title: "Cabinet de Gynécologie",
     patient_tabs: [
-      "new-visit", "specialty", "imaging", "diagnosis",
+      "new-visit", "specialty", "imaging", "diagnosis", "bilan",
       "followup", "fiche", "historique", "docs", "templates", "ai"
     ],
     specialty_tab_label: "Données Gynéco",
@@ -284,7 +285,7 @@ export const SPECIALITIES = {
     color: "#06b6d4",
     dashboard_title: "Cabinet de Pédiatrie",
     patient_tabs: [
-      "new-visit", "vitals", "bmi", "specialty", "diagnosis",
+      "new-visit", "vitals", "bmi", "specialty", "diagnosis", "bilan",
       "followup", "fiche", "historique", "docs", "templates", "ai"
     ],
     specialty_tab_label: "Données Pédiatriques",
@@ -326,7 +327,7 @@ export const SPECIALITIES = {
     color: "#d97706",
     dashboard_title: "Cabinet de Dermatologie",
     patient_tabs: [
-      "new-visit", "specialty", "imaging", "diagnosis",
+      "new-visit", "specialty", "imaging", "diagnosis", "bilan",
       "followup", "fiche", "historique", "docs", "templates", "ai"
     ],
     specialty_tab_label: "Examen Dermatologique",

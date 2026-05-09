@@ -29,7 +29,7 @@ export const api = {
   login: (body) => request("/api/auth/login", { method: "POST", body: JSON.stringify(body) }),
   health: () => request("/api/health"),
   dashboard: () => request("/api/dashboard"),
-  patients: (search = "", pageSize = 300, offset = 0) =>
+  patients: (search = "", pageSize = 200, offset = 0) =>
     request(`/api/patients?page_size=${pageSize}&offset=${offset}&search=${encodeURIComponent(search)}`),
   patient: (id) => request(`/api/patients/${id}`),
   createPatient: (body) => request("/api/patients", { method: "POST", body: JSON.stringify(body) }),
@@ -81,10 +81,11 @@ export const api = {
   tunnelStatus: () => request("/api/tunnel/status"),
   patientDocuments: (patientId) => request(`/api/patients/${patientId}/documents`),
   // Medicine database
-  searchMedicines: (q) => request(`/api/medicines/search?q=${encodeURIComponent(q)}`),
+  searchMedicines: (q, limit = 100) => request(`/api/medicines/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   getMedicine: (id) => request(`/api/medicines/${id}`),
   medicinesStats: () => request("/api/medicines/stats"),
-  importBdpm: (formData) => request("/api/medicines/import-bdpm", { method: "POST", body: formData }),
+  addMedicine: (body) => request("/api/medicines", { method: "POST", body: JSON.stringify(body) }),
+  addBilanCatalog: (body) => request("/api/bilan-catalog", { method: "POST", body: JSON.stringify(body) }),
   // Prescription workflow
   createPrescriptionWorkflow: (body) => request("/api/prescriptions/workflow", { method: "POST", body: JSON.stringify(body) }),
   getPrescriptionItems: (id) => request(`/api/prescriptions/${id}/items`),
@@ -93,6 +94,33 @@ export const api = {
   prescriptionPreview: (id) => `${API_BASE}/api/prescriptions/${id}/preview`,
   // Safety check
   safetyCheck: (body) => request("/api/safety-check", { method: "POST", body: JSON.stringify(body) }),
+  // BDPM import (French public drug database — auto-downloads from gouv.fr)
+  importBdpm: () => request("/api/medicines/import-bdpm", { method: "POST" }),
+  bdpmStatus: () => request("/api/medicines/bdpm-status"),
+  importMedicinesBulk: (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("format_hint", "auto");
+    return request("/api/medicines/import-bulk", { method: "POST", body: fd });
+  },
+  // Specialty smart-lists, favorites, recent
+  medicineSpecialties: () => request("/api/medicines/specialties"),
+  medicinesBySpecialty: (specialty) => request(`/api/medicines/by-specialty?specialty=${encodeURIComponent(specialty)}`),
+  favoriteMedicines: () => request("/api/medicines/favorites"),
+  addFavoriteMedicine: (medicineId) => request("/api/medicines/favorites", { method: "POST", body: JSON.stringify({ medicine_id: medicineId }) }),
+  removeFavoriteMedicine: (medicineId) => request(`/api/medicines/favorites/${medicineId}`, { method: "DELETE" }),
+  recentMedicines: () => request("/api/medicines/recent"),
+  gestionDbMedicines: (q = "", limit = 500) => request(`/api/gestion-db/medicines?q=${encodeURIComponent(q)}&limit=${limit}`),
+  // Doctor profile
+  doctorProfile: () => request("/api/doctor-profile"),
+  // Bilan (lab/exam orders)
+  bilanCatalog: (params = {}) => { const q = new URLSearchParams(params).toString(); return request(`/api/bilan-catalog${q ? "?" + q : ""}`); },
+  patientBilans: (patientId) => request(`/api/patients/${patientId}/bilans`),
+  createBilan: (patientId, body) => request(`/api/patients/${patientId}/bilans`, { method: "POST", body: JSON.stringify(body) }),
+  updateBilan: (bilanId, body) => request(`/api/bilans/${bilanId}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteBilan: (bilanId) => request(`/api/bilans/${bilanId}`, { method: "DELETE" }),
+  updateBilanItemResult: (itemId, body) => request(`/api/bilan-items/${itemId}/result`, { method: "PUT", body: JSON.stringify(body) }),
+  printBilan: (bilanId) => request(`/api/bilans/${bilanId}/print`),
   // Anthropometry
   addAnthropometry: (patientId, body) => request(`/api/patients/${patientId}/anthropometry`, { method: "POST", body: JSON.stringify(body) }),
   getAnthropometry: (patientId) => request(`/api/patients/${patientId}/anthropometry`),
