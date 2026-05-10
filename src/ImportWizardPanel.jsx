@@ -146,14 +146,63 @@ export default function ImportWizardPanel() {
   const [jobHistory, setJobHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const fileRef = useRef();
+  const gmFileRef = useRef();
+  const [gmBusy, setGmBusy] = useState(false);
+  const [gmResult, setGmResult] = useState(null);
 
   const setErr = (msg) => { setError(msg); setExecuting(false); };
   const go = (n) => { setError(""); setStep(n); };
 
+  // ── One-click GestionMedicale .sql import ─────────────────────────────────
+  const handleGmSqlUpload = async (file) => {
+    if (!file) return;
+    setGmBusy(true); setGmResult(null); setError("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`${API}/api/import/gestion-medicale-sql`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(e.detail || "Erreur");
+      }
+      setGmResult(await res.json());
+    } catch (e) { setError(`Import GestionMédicale échoué: ${e.message}`); }
+    setGmBusy(false);
+  };
+
   // ── Step 0: choose source ─────────────────────────────────────────────────
   const renderStep0 = () => (
     <div className="imp-card">
-      <h2 className="imp-card__title"><Database size={18} /> Choisissez la source de données</h2>
+      {/* ▼ One-click GestionMédicale SQL banner ───────────────────────── */}
+      <div style={{ background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff", padding: "16px 20px", borderRadius: 12, marginBottom: 18, boxShadow: "0 4px 14px rgba(16,185,129,.25)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+              <Database size={18} /> Import express GestionMédicale (.sql)
+            </div>
+            <div style={{ fontSize: 12.5, opacity: 0.95, lineHeight: 1.5 }}>
+              Sélectionnez votre fichier <strong>GestionMedicaleDBbackup_*.sql</strong> — patients et médicaments seront importés automatiquement, sans conversion.
+            </div>
+          </div>
+          <button onClick={() => gmFileRef.current?.click()} disabled={gmBusy}
+            style={{ background: "#fff", color: "#059669", border: "none", padding: "10px 18px", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: gmBusy ? "wait" : "pointer", display: "inline-flex", alignItems: "center", gap: 7, boxShadow: "0 2px 6px rgba(0,0,0,.1)" }}>
+            {gmBusy ? <><Loader2 size={14} className="imp-spin" /> Import en cours…</> : <><Upload size={14} /> Choisir le fichier .sql</>}
+          </button>
+          <input ref={gmFileRef} type="file" accept=".sql" style={{ display: "none" }}
+            onChange={e => handleGmSqlUpload(e.target.files[0])} />
+        </div>
+        {gmResult && (
+          <div style={{ marginTop: 12, background: "rgba(255,255,255,.18)", padding: "10px 14px", borderRadius: 8, fontSize: 12.5 }}>
+            <CheckCircle2 size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />
+            <strong>{gmResult.patients_imported} nouveaux patients</strong> importés
+            {gmResult.patients_skipped > 0 && <> &middot; {gmResult.patients_skipped} déjà présents</>}
+            {gmResult.medicines_imported > 0 && <> &middot; {gmResult.medicines_imported} médicaments ajoutés</>}
+            <> sur {gmResult.total_parsed} analysés</>
+            {gmResult.errors?.length > 0 && <> &middot; <span style={{ color: "#fef3c7" }}>{gmResult.errors.length} erreurs</span></>}
+          </div>
+        )}
+      </div>
+      <h2 className="imp-card__title"><Database size={18} /> Ou choisissez une autre source</h2>
       <div className="imp-source-grid">
         <div>
           <div className="imp-source-cat"><Upload size={13} /> Fichier local</div>

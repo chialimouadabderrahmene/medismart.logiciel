@@ -6538,6 +6538,246 @@ def gestion_db_medicines_list(q: str = "", limit: int = 500) -> dict[str, Any]:
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DIRECT MYSQL DUMP → SQLITE IMPORT (GestionMedicale)
+# Parses `INSERT INTO patient VALUES (...)` rows from a .sql backup file and
+# inserts patients straight into MediSmart. No SQLite-conversion middleman.
+# ─────────────────────────────────────────────────────────────────────────────
+def _parse_mysql_inserts(text: str, table: str) -> list:
+    """Robust MySQL dump parser → list of value-tuples for given table.
+    Handles multi-line INSERTs, escaped quotes, and NULLs."""
+    import re as _re
+    rows: list = []
+    # Find every `INSERT INTO `table` VALUES ...;` block (mysqldump may emit several)
+    for m in _re.finditer(
+        rf"INSERT INTO `{_re.escape(table)}`\s*(?:\([^)]*\)\s*)?VALUES\s*([\s\S]+?);(?=\s*(?:INSERT|/\*|--|\Z))",
+        text,
+    ):
+        src = m.group(1)
+        i, n = 0, len(src)
+        row: list = []
+        col: list = []
+        in_str = False
+        depth = 0  # paren depth
+        while i < n:
+            c = src[i]
+            if in_str:
+                if c == "\\" and i + 1 < n:
+                    nc = src[i + 1]
+                    col.append({"n": "\n", "t": "\t", "r": "\r", "0": "\0",
+                                "'": "'", '"': '"', "\\": "\\"}.get(nc, nc))
+                    i += 2
+                    continue
+                if c == "'":
+                    # Check for doubled '' inside string → literal quote
+                    if i + 1 < n and src[i + 1] == "'":
+                        col.append("'")
+                        i += 2
+                        continue
+                    in_str = False
+                    i += 1
+                    continue
+                col.append(c)
+                i += 1
+                continue
+            # not in string
+            if c == "'":
+                in_str = True
+                i += 1
+                continue
+            if c == "(":
+                if depth == 0:
+                    row, col = [], []
+                else:
+                    col.append(c)
+                depth += 1
+                i += 1
+                continue
+            if c == ")":
+                depth -= 1
+                if depth == 0:
+                    v = "".join(col).strip()
+                    row.append(None if v == "NULL" else v)
+                    rows.append(row)
+                    row, col = [], []
+                else:
+                    col.append(c)
+                i += 1
+                continue
+            if c == "," and depth == 1:
+                v = "".join(col).strip()
+                row.append(None if v == "NULL" else v)
+                col = []
+                i += 1
+                continue
+            if depth >= 1 and c not in (" ", "\n", "\r", "\t"):
+                col.append(c)
+            i += 1
+    return rows
+
+
+@app.post("/api/import/gestion-medicale-sql")
+async def import_gestion_medicale_sql(
+    file: UploadFile = File(...),
+    dry_run: int = Form(0),
+) -> dict[str, Any]:
+    """One-click import: parse a GestionMedicale MySQL .sql dump and insert patients
+    + medicines directly. Idempotent via `legacy_patient_id` UNIQUE constraint.
+
+    Returns: { patients_imported, patients_skipped, medicines_imported, total_parsed, errors }
+    """
+    import secrets as _secrets
+
+    # Read upload (binary, since file may have mixed encodings)
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8", errors="replace")
+    except Exception:
+        text = raw.decode("latin-1", errors="replace")
+
+    # Patient column indices in GestionMedicale schema
+    P = {
+        "id": 0, "wilaya_name": 5, "commune_name": 9, "village": 10,
+        "first_name": 11, "last_name": 12, "sexe": 13, "birthday": 14,
+        "age": 15, "phone": 16, "mobile1": 18, "mobile2": 19, "email": 20,
+        "situation": 21, "profession": 30, "unique_code": 32,
+        "atcd": 41, "blood": 45, "oriented_by": 51,
+    }
+
+    def _val(row: list, idx: int) -> str:
+        return ("" if idx >= len(row) or row[idx] is None else str(row[idx])).strip()
+
+    def _norm_sex(v: str) -> str:
+        s = v.lower()
+        if not s:
+            return ""
+        if s.startswith("m") or s == "1" or "homme" in s or "masc" in s:
+            return "Masculin"
+        if s.startswith("f") or s == "2" or "femme" in s or "fem" in s:
+            return "Féminin"
+        return v
+
+    def _norm_date(v: str) -> str:
+        if not v or v.startswith("0000"):
+            return ""
+        return v.split(" ")[0][:10]
+
+    def _build_address(row: list) -> str:
+        parts = [_val(row, P["village"]), _val(row, P["commune_name"]), _val(row, P["wilaya_name"])]
+        return ", ".join(p for p in parts if p)
+
+    patient_rows = _parse_mysql_inserts(text, "patient")
+    total = len(patient_rows)
+
+    if dry_run:
+        return {"total_parsed": total, "patients_imported": 0, "patients_skipped": 0,
+                "medicines_imported": 0, "dry_run": True, "errors": []}
+
+    imported = skipped = 0
+    errors: list = []
+
+    with connect() as conn:
+        for row in patient_rows:
+            try:
+                legacy_id_str = _val(row, P["id"])
+                if not legacy_id_str.isdigit():
+                    skipped += 1
+                    continue
+                legacy_id = int(legacy_id_str)
+
+                # Skip if already imported
+                if conn.execute(
+                    "SELECT 1 FROM patients WHERE legacy_patient_id = ? LIMIT 1",
+                    (legacy_id,),
+                ).fetchone():
+                    skipped += 1
+                    continue
+
+                nom = _val(row, P["last_name"]) or "INCONNU"
+                prenom = _val(row, P["first_name"]) or "INCONNU"
+                phone = _val(row, P["phone"]) or _val(row, P["mobile1"]) or _val(row, P["mobile2"])
+                age_str = _val(row, P["age"])
+                age_int = int(age_str) if age_str.isdigit() else None
+                code = _val(row, P["unique_code"]) or f"GM{legacy_id}"
+
+                # Code must be unique → suffix if collision
+                if conn.execute("SELECT 1 FROM patients WHERE code = ? LIMIT 1", (code,)).fetchone():
+                    code = f"{code}-{legacy_id}"
+
+                conn.execute(
+                    """INSERT INTO patients
+                    (code, nom, prenom, date_naissance, age, sexe, groupe_sanguin,
+                     situation_familiale, adresse, telephone, profession, oriente_par,
+                     maladies, qr_token, legacy_patient_id)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        code, nom, prenom,
+                        _norm_date(_val(row, P["birthday"])),
+                        age_int,
+                        _norm_sex(_val(row, P["sexe"])),
+                        _val(row, P["blood"]),
+                        _val(row, P["situation"]),
+                        _build_address(row),
+                        phone,
+                        _val(row, P["profession"]),
+                        _val(row, P["oriented_by"]),
+                        _val(row, P["atcd"]),
+                        _secrets.token_hex(16),
+                        legacy_id,
+                    ),
+                )
+                imported += 1
+            except Exception as e:
+                errors.append({"legacy_id": _val(row, P["id"]), "error": str(e)[:200]})
+                if len(errors) > 100:
+                    break
+        conn.commit()
+        # Rebuild FTS so new patients are searchable
+        try:
+            rebuild_patients_fts(conn)
+        except Exception:
+            pass
+
+    # Medicines (best-effort, non-fatal)
+    medicines_imported = 0
+    try:
+        med_rows = _parse_mysql_inserts(text, "medicine")
+        with connect() as conn:
+            for row in med_rows:
+                try:
+                    name = (row[1] or "").strip() if len(row) > 1 else ""
+                    if not name:
+                        continue
+                    dci = (row[7] or "").strip() if len(row) > 7 else ""
+                    # Skip if already in DB
+                    exists = conn.execute(
+                        "SELECT 1 FROM medicines_db WHERE brand_name = ? LIMIT 1",
+                        (name,),
+                    ).fetchone()
+                    if exists:
+                        continue
+                    conn.execute(
+                        """INSERT INTO medicines_db (brand_name, dci, dosage_strength, source)
+                           VALUES (?,?,?,?)""",
+                        (name, dci, "", "gestion_medicale"),
+                    )
+                    medicines_imported += 1
+                except Exception:
+                    continue
+            conn.commit()
+    except Exception as e:
+        errors.append({"phase": "medicines", "error": str(e)[:200]})
+
+    return {
+        "total_parsed": total,
+        "patients_imported": imported,
+        "patients_skipped": skipped,
+        "medicines_imported": medicines_imported,
+        "errors": errors[:20],
+        "filename": file.filename,
+    }
+
+
 @app.post("/api/medicines")
 def add_medicine_manual(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     """Manually add a single medicine to the local database."""
