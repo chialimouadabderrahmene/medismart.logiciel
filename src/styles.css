@@ -1616,7 +1616,7 @@ a:hover {
 /* -------- Responsiveness -------- */
 @media (max-width: 1024px) {
   .workspace { grid-template-columns: 1fr; }
-  .sidebar, .timeline { display: none; }
+  .sidebar { display: none; }
   .topbar { padding: 0 16px; gap: 12px; }
   .topbar .searchbox { max-width: none; }
 }

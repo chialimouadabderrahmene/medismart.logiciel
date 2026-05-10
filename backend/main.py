@@ -1508,6 +1508,8 @@ def apply_light_migrations(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "visits", "payment_status", "TEXT NOT NULL DEFAULT 'pending'")
     ensure_column(conn, "visits", "visit_type", "TEXT")
     ensure_column(conn, "medicines_db", "specialty", "TEXT")
+    ensure_column(conn, "medicines_db", "default_posology", "TEXT")
+    ensure_column(conn, "medicines_db", "default_quantity", "TEXT")
     conn.execute("""CREATE TABLE IF NOT EXISTS favorite_medicines (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         medicine_id INTEGER NOT NULL,
@@ -1802,6 +1804,7 @@ def apply_light_migrations(conn: sqlite3.Connection) -> None:
     # ── Safely add extra columns to patients/visits ───────────────────────────
     for _alter in [
         "ALTER TABLE patients ADD COLUMN extra_data TEXT DEFAULT '{}'",
+        "ALTER TABLE patients ADD COLUMN antecedents TEXT DEFAULT ''",
         "ALTER TABLE import_jobs ADD COLUMN patients_updated INTEGER NOT NULL DEFAULT 0",
     ]:
         try:
@@ -2918,8 +2921,8 @@ def init_db() -> None:
                 """
                 INSERT INTO patients
                 (code, nom, prenom, date_naissance, age, sexe, groupe_sanguin, situation_familiale,
-                 adresse, telephone, profession, oriente_par, allergies, maladies, notes_importantes, qr_token)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 adresse, telephone, profession, oriente_par, allergies, maladies, notes_importantes, antecedents, qr_token)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     "CARD-0001",
@@ -2937,6 +2940,7 @@ def init_db() -> None:
                     "Aspirine",
                     "HTA, Diabete type 2, ACFA",
                     "Risque hemorragique, verifier INR/creatinine.",
+                    "HTA depuis 2010, Diabete type 2 depuis 2015, AVC ischemique 2020.",
                     token,
                 ),
             )
@@ -2968,6 +2972,7 @@ class PatientIn(BaseModel):
     allergies: str | None = None
     maladies: str | None = None
     notes_importantes: str | None = None
+    antecedents: str | None = None
 
 
 class VisitIn(BaseModel):
@@ -3452,8 +3457,8 @@ def create_patient(payload: PatientIn) -> dict[str, Any]:
             """
             INSERT INTO patients
             (code, nom, prenom, date_naissance, age, sexe, groupe_sanguin, situation_familiale,
-             adresse, telephone, profession, oriente_par, allergies, maladies, notes_importantes, qr_token)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             adresse, telephone, profession, oriente_par, allergies, maladies, notes_importantes, antecedents, qr_token)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 code,
@@ -3471,6 +3476,7 @@ def create_patient(payload: PatientIn) -> dict[str, Any]:
                 payload.allergies,
                 payload.maladies,
                 payload.notes_importantes,
+                payload.antecedents or "",
                 token,
             ),
         )
@@ -3567,7 +3573,7 @@ def update_patient(patient_id: int, payload: PatientIn) -> dict[str, Any]:
             UPDATE patients SET
             code=?, nom=?, prenom=?, date_naissance=?, age=?, sexe=?, groupe_sanguin=?,
             situation_familiale=?, adresse=?, telephone=?, profession=?, oriente_par=?,
-            allergies=?, maladies=?, notes_importantes=?, updated_at=?
+            allergies=?, maladies=?, notes_importantes=?, antecedents=?, updated_at=?
             WHERE id=?
             """,
             (
@@ -3586,6 +3592,7 @@ def update_patient(patient_id: int, payload: PatientIn) -> dict[str, Any]:
                 payload.allergies,
                 payload.maladies,
                 payload.notes_importantes,
+                payload.antecedents or "",
                 now_iso(),
                 patient_id,
             ),
@@ -3784,6 +3791,23 @@ def add_diagnosis(patient_id: int, payload: CardioDiagnosisIn) -> dict[str, Any]
         diagnosis_id = cur.lastrowid
     audit("create", "cardio_diagnoses", diagnosis_id, payload.diagnosis)
     return {"id": diagnosis_id}
+
+
+@app.delete("/api/patients/{patient_id}/diagnoses/{diagnosis_id}")
+def delete_diagnosis(patient_id: int, diagnosis_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT diagnosis FROM cardio_diagnoses WHERE id = ? AND patient_id = ?",
+            (diagnosis_id, patient_id),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Diagnostic introuvable")
+        conn.execute(
+            "DELETE FROM cardio_diagnoses WHERE id = ? AND patient_id = ?",
+            (diagnosis_id, patient_id),
+        )
+    audit("delete", "cardio_diagnoses", diagnosis_id, row["diagnosis"])
+    return {"deleted": diagnosis_id}
 
 
 @app.post("/api/patients/{patient_id}/followups", status_code=201)
@@ -6385,7 +6409,8 @@ def search_medicines(q: str = "", limit: int = 100) -> dict[str, Any]:
             fts_rows = rows_to_dicts(conn.execute(
                 """SELECT m.id, m.brand_name, m.dci, m.active_substance,
                           m.dosage_strength, m.form, m.route, m.source,
-                          m.cis_code, m.cip_code, m.indications, m.laboratory
+                          m.cis_code, m.cip_code, m.indications, m.laboratory,
+                          m.default_posology, m.default_quantity
                    FROM medicines_fts f
                    JOIN medicines_db m ON m.id = f.rowid
                    WHERE medicines_fts MATCH ?
@@ -6402,7 +6427,8 @@ def search_medicines(q: str = "", limit: int = 100) -> dict[str, Any]:
         like = f"%{term}%"
         rows = rows_to_dicts(conn.execute(
             """SELECT id, brand_name, dci, active_substance, dosage_strength, form, route, source,
-                      cis_code, cip_code, indications, laboratory
+                      cis_code, cip_code, indications, laboratory,
+                      default_posology, default_quantity
                FROM medicines_db
                WHERE brand_name LIKE ? OR dci LIKE ? OR active_substance LIKE ?
                   OR cis_code LIKE ? OR cip_code LIKE ? OR indications LIKE ?
@@ -6738,28 +6764,65 @@ async def import_gestion_medicale_sql(
         except Exception:
             pass
 
-    # Medicines (best-effort, non-fatal)
-    medicines_imported = 0
+    # Medicines: GestionMedicale columns →
+    # (id, name, dosage, conditionnement, isActive, _, _, dci, lab, _, qty, posology, _, _)
+    # We capture brand, dosage, form, dci, laboratory, default_posology, default_quantity.
+    # UPSERT logic: if (brand+dosage) exists, enrich its empty fields; otherwise insert.
+    medicines_imported = medicines_updated = 0
     try:
         med_rows = _parse_mysql_inserts(text, "medicine")
         with connect() as conn:
             for row in med_rows:
                 try:
-                    name = (row[1] or "").strip() if len(row) > 1 else ""
+                    name = (_val(row, 1) or "").strip()
                     if not name:
                         continue
-                    dci = (row[7] or "").strip() if len(row) > 7 else ""
-                    # Skip if already in DB
-                    exists = conn.execute(
-                        "SELECT 1 FROM medicines_db WHERE brand_name = ? LIMIT 1",
-                        (name,),
+                    dosage = _val(row, 2)
+                    cond = _val(row, 3)            # "B/30", "comprime"…
+                    dci = _val(row, 7)
+                    lab = _val(row, 8)
+                    qty = _val(row, 10)
+                    poso = _val(row, 11)
+
+                    existing = conn.execute(
+                        "SELECT id, dosage_strength, dci, laboratory, default_posology, default_quantity "
+                        "FROM medicines_db WHERE lower(brand_name) = lower(?) "
+                        "AND (dosage_strength IS NULL OR dosage_strength = '' OR lower(dosage_strength) = lower(?)) "
+                        "LIMIT 1",
+                        (name, dosage),
                     ).fetchone()
-                    if exists:
+
+                    if existing:
+                        # Enrich any empty columns without overwriting non-empty data
+                        eid = existing["id"]
+                        updates: list = []
+                        params: list = []
+                        for col, new_val in (
+                            ("dosage_strength", dosage),
+                            ("dci", dci),
+                            ("laboratory", lab),
+                            ("default_posology", poso),
+                            ("default_quantity", qty),
+                            ("form", cond),
+                        ):
+                            if new_val and not (existing[col] if col in existing.keys() else None):
+                                updates.append(f"{col} = ?")
+                                params.append(new_val)
+                        if updates:
+                            params.append(eid)
+                            conn.execute(
+                                f"UPDATE medicines_db SET {', '.join(updates)}, last_updated = CURRENT_TIMESTAMP WHERE id = ?",
+                                params,
+                            )
+                            medicines_updated += 1
                         continue
+
                     conn.execute(
-                        """INSERT INTO medicines_db (brand_name, dci, dosage_strength, source)
-                           VALUES (?,?,?,?)""",
-                        (name, dci, "", "gestion_medicale"),
+                        """INSERT INTO medicines_db
+                           (brand_name, dci, dosage_strength, form, laboratory,
+                            default_posology, default_quantity, source)
+                           VALUES (?,?,?,?,?,?,?,?)""",
+                        (name, dci, dosage, cond, lab, poso, qty, "gestion_medicale"),
                     )
                     medicines_imported += 1
                 except Exception:
@@ -6773,6 +6836,7 @@ async def import_gestion_medicale_sql(
         "patients_imported": imported,
         "patients_skipped": skipped,
         "medicines_imported": medicines_imported,
+        "medicines_updated": medicines_updated,
         "errors": errors[:20],
         "filename": file.filename,
     }
@@ -8443,26 +8507,26 @@ def preview_bilan_html(bilan_id: int) -> HTMLResponse:
 <title>Bilan — {pat_name}</title>
 <style>
   *{{box-sizing:border-box;margin:0;padding:0}}
-  body{{font-family:'Times New Roman',serif;font-size:12pt;color:#111;background:#fff}}
-  @page{{size:A4;margin:12mm 15mm}}
+  body{{font-family:'Times New Roman',serif;font-size:10.5pt;color:#111;background:#fff}}
+  @page{{size:A5;margin:8mm 10mm}}
   .hdr-tbl{{width:100%;border-collapse:collapse;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:4px}}
   .hdr-tbl td{{vertical-align:top;padding:0 6px}}
   .hdr-left{{width:38%}}
   .hdr-center{{width:24%;text-align:center;vertical-align:middle}}
   .hdr-right{{width:38%;text-align:right}}
-  .doc-name{{font-size:13.5pt;font-weight:bold;margin-bottom:2px}}
-  .doc-spec{{font-size:10.5pt;font-weight:bold}}
-  .doc-ordre{{font-size:9pt;margin-top:3px}}
-  .hdr-right .rl{{font-size:10.5pt;margin:2px 0}}
+  .doc-name{{font-size:11.5pt;font-weight:bold;margin-bottom:1px}}
+  .doc-spec{{font-size:9pt;font-weight:bold}}
+  .doc-ordre{{font-size:8pt;margin-top:2px}}
+  .hdr-right .rl{{font-size:9pt;margin:1px 0}}
   .sep{{border:none;border-top:2px solid #000;margin:6px 0 10px}}
-  .title-line{{font-size:13pt;font-weight:700;text-align:center;margin:12px 0 10px;letter-spacing:.3px}}
-  .cat-block{{margin-bottom:12px}}
-  .cat-title{{font-size:10.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;color:#374151}}
+  .title-line{{font-size:11pt;font-weight:700;text-align:center;margin:8px 0 6px;letter-spacing:.3px}}
+  .cat-block{{margin-bottom:8px}}
+  .cat-title{{font-size:9.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;color:#374151}}
   ul{{list-style:none;padding-left:0}}
-  li{{padding:4px 0 4px 18px;border-bottom:1px solid #f3f4f6;position:relative;font-size:11.5pt}}
+  li{{padding:2.5px 0 2.5px 16px;border-bottom:1px solid #f3f4f6;position:relative;font-size:10pt}}
   li::before{{content:"☐";position:absolute;left:0;color:#9ca3af}}
-  .note{{margin-top:14px;font-size:10pt;color:#6b7280;border-top:1px dashed #d1d5db;padding-top:8px}}
-  .ftr{{margin-top:30px;border-top:1.5px solid #000;padding-top:7px;font-size:9pt;text-align:center;color:#374151}}
+  .note{{margin-top:10px;font-size:9pt;color:#6b7280;border-top:1px dashed #d1d5db;padding-top:6px}}
+  .ftr{{margin-top:14px;border-top:1px solid #000;padding-top:5px;font-size:8pt;text-align:center;color:#374151}}
   .no-print{{display:block;text-align:center;margin:16px 0}}
   .print-btn{{padding:8px 24px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}}
   @media print{{.no-print{{display:none!important}}body{{padding:0}}}}

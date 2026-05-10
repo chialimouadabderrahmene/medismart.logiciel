@@ -43,6 +43,7 @@ export const api = {
   addEcg: (id, body) => request(`/api/patients/${id}/ecg`, { method: "POST", body: JSON.stringify(body) }),
   addImaging: (id, body) => request(`/api/patients/${id}/imaging`, { method: "POST", body: JSON.stringify(body) }),
   addDiagnosis: (id, body) => request(`/api/patients/${id}/diagnoses`, { method: "POST", body: JSON.stringify(body) }),
+  deleteDiagnosis: (patientId, diagnosisId) => request(`/api/patients/${patientId}/diagnoses/${diagnosisId}`, { method: "DELETE" }),
   addFollowup: (id, body) => request(`/api/patients/${id}/followups`, { method: "POST", body: JSON.stringify(body) }),
   autoFollowup: (id) => request(`/api/patients/${id}/followups/auto`, { method: "POST" }),
   medications: (search = "") => request(`/api/medications?search=${encodeURIComponent(search)}`),

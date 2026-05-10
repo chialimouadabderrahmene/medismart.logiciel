@@ -148,11 +148,17 @@ fn bootstrap_data_dir(app_root: &Path, data_dir: &Path) {
     let _ = fs::create_dir_all(data_dir);
     let target = data_dir.join("cardiologie.sqlite3");
 
+    // CRITICAL: Once the doctor has any database, NEVER overwrite it.
+    // This guarantees data entered today is still there tomorrow.
+    // We only seed when target is missing or has zero bytes (corrupt/empty).
     let target_size = if target.is_file() {
         fs::metadata(&target).map(|m| m.len()).unwrap_or(0)
     } else {
         0
     };
+    if target_size > 0 {
+        return;
+    }
 
     for candidate in seed_database_candidates(app_root) {
         if !candidate.is_file() {
@@ -162,11 +168,6 @@ fn bootstrap_data_dir(app_root: &Path, data_dir: &Path) {
             if source == destination {
                 return;
             }
-        }
-        let seed_size = fs::metadata(&candidate).map(|m| m.len()).unwrap_or(0);
-        // Skip copy only if target already has a real database (> 1 MB and not much smaller than seed)
-        if target_size > 1_000_000 && target_size >= seed_size / 2 {
-            return;
         }
         if fs::copy(&candidate, &target).is_ok() {
             return;
