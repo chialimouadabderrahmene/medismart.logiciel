@@ -15,6 +15,7 @@ export const TAB_REGISTRY = {
   "imaging":    { label: "Imagerie/Labs",    icon: "Stethoscope",   group: "diagnostic" },
   "diagnosis":  { label: "Diagnostic",       icon: "Pill",          group: "diagnostic" },
   "bilan":      { label: "Bilan / Examens",  icon: "FlaskConical",  group: "diagnostic" },
+  "antecedent": { label: "Antécédent",       icon: "ClipboardList", group: "gestion" },
   "fiche":      { label: "Fiche Patient",    icon: "UserRound",     group: "gestion" },
   "historique": { label: "Historique",       icon: "Clock",       group: "gestion" },
   "followup":   { label: "Suivi",            icon: "CalendarDays",group: "gestion" },

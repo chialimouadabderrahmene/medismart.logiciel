@@ -131,6 +131,7 @@ export const api = {
   createDocumentTemplate: (body) => request("/api/document-templates", { method: "POST", body: JSON.stringify(body) }),
   updateDocumentTemplate: (id, body) => request(`/api/document-templates/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   duplicateDocumentTemplate: (id) => request(`/api/document-templates/${id}/duplicate`, { method: "POST" }),
+  deleteDocumentTemplate: (id) => request(`/api/document-templates/${id}`, { method: "DELETE" }),
   // Generated documents
   generateDocument: (body) => request("/api/generated-documents", { method: "POST", body: JSON.stringify(body) }),
   getGeneratedDocument: (id) => request(`/api/generated-documents/${id}`),
@@ -153,6 +154,12 @@ export const api = {
     const q = new URLSearchParams(params).toString();
     return request(`/api/appointments/filtered?${q}`);
   },
+  // Today's visits (Patients vus aujourd'hui)
+  visitsToday: (date = "") => request(`/api/visits/today${date ? `?date=${date}` : ""}`),
+  // Patient quick summary (details modal in Liste des patients)
+  patientQuickSummary: (patientId) => request(`/api/patients/${patientId}/quick-summary`),
+  // Finance today summary
+  financeTodaySummary: () => request("/api/finance/today-summary"),
   // AI Credit system
   aiSubscription: () => request("/api/ai/subscription"),
   aiPlans: () => request("/api/ai/plans"),
@@ -160,4 +167,41 @@ export const api = {
   aiChangePlan: (plan_name) => request("/api/ai/subscription/plan", { method: "POST", body: JSON.stringify({ plan_name }) }),
   aiToggle: () => request("/api/ai/subscription/toggle", { method: "POST" }),
   syncCloudAnalysis: (documentId, body) => request(`/api/documents/${documentId}/sync-cloud`, { method: "POST", body: JSON.stringify(body) }),
+
+  // ── Production audit endpoints ─────────────────────────────────────────────
+  diagnosticFullData: () => request("/api/diagnostic/full-data"),
+  doctors: (activeOnly = 0) => request(`/api/doctors?active_only=${activeOnly}`),
+  createDoctor: (body) => request("/api/doctors", { method: "POST", body: JSON.stringify(body) }),
+  updateDoctor: (id, body) => request(`/api/doctors/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deactivateDoctor: (id) => request(`/api/doctors/${id}`, { method: "DELETE" }),
+  typeActes: (activeOnly = 1) => request(`/api/type-actes?active_only=${activeOnly}`),
+  allTemplates: () => request("/api/templates"),
+  patientFull: (id) => request(`/api/patients/${id}/full`),
+  patientAntecedents: (id) => request(`/api/patients/${id}/antecedents`),
+  updatePatientAntecedents: (id, body) => request(`/api/patients/${id}/antecedents`, { method: "PUT", body: JSON.stringify(body) }),
+  patientPayments: (id) => request(`/api/patients/${id}/payments`),
+  patientHistorique: (id) => request(`/api/patients/${id}/historique`),
+  // Référentiels — Diagnostics catalog
+  diagnosticsCatalog: (activeOnly = 0) => request(`/api/diagnostics-catalog?active_only=${activeOnly}`),
+  createDiagnostic: (body) => request("/api/diagnostics-catalog", { method: "POST", body: JSON.stringify(body) }),
+  updateDiagnostic: (id, body) => request(`/api/diagnostics-catalog/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteDiagnostic: (id) => request(`/api/diagnostics-catalog/${id}`, { method: "DELETE" }),
+  // Référentiels — Tarifs
+  tarifs: (activeOnly = 0) => request(`/api/tarifs?active_only=${activeOnly}`),
+  createTarif: (body) => request("/api/tarifs", { method: "POST", body: JSON.stringify(body) }),
+  updateTarif: (id, body) => request(`/api/tarifs/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteTarif: (id) => request(`/api/tarifs/${id}`, { method: "DELETE" }),
+  // Référentiels — Actes catalog
+  actesCatalog: (activeOnly = 0) => request(`/api/actes-catalog?active_only=${activeOnly}`),
+  createActe: (body) => request("/api/actes-catalog", { method: "POST", body: JSON.stringify(body) }),
+  updateActe: (id, body) => request(`/api/actes-catalog/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteActe: (id) => request(`/api/actes-catalog/${id}`, { method: "DELETE" }),
+  // Référentiels — Bilan catalog (update + delete)
+  updateBilanCatalog: (id, body) => request(`/api/bilan-catalog/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteBilanCatalog: (id) => request(`/api/bilan-catalog/${id}`, { method: "DELETE" }),
+  // Référentiels — Visit types (delete)
+  deleteVisitType: (id) => request(`/api/visit-types/${id}`, { method: "DELETE" }),
+  // Référentiels — Medicines (update + delete)
+  updateMedicine: (id, body) => request(`/api/medicines/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteMedicine: (id) => request(`/api/medicines/${id}`, { method: "DELETE" }),
 };

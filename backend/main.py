@@ -17,6 +17,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import unicodedata
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timedelta
@@ -1507,6 +1508,7 @@ def apply_light_migrations(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "visits", "fee_paid", "REAL NOT NULL DEFAULT 0")
     ensure_column(conn, "visits", "payment_status", "TEXT NOT NULL DEFAULT 'pending'")
     ensure_column(conn, "visits", "visit_type", "TEXT")
+    ensure_column(conn, "visits", "legacy_consultation_id", "INTEGER")
     ensure_column(conn, "medicines_db", "specialty", "TEXT")
     ensure_column(conn, "medicines_db", "default_posology", "TEXT")
     ensure_column(conn, "medicines_db", "default_quantity", "TEXT")
@@ -1637,6 +1639,8 @@ def apply_light_migrations(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "ai_document_analyses", "validated_extracted_json", "TEXT")
     ensure_column(conn, "ai_document_analyses", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
     ensure_column(conn, "ai_document_analyses", "analysis_mode", "TEXT")
+    ensure_column(conn, "lab_results", "glucose", "REAL")
+    ensure_column(conn, "lab_results", "hba1c", "REAL")
     ensure_column(conn, "ai_settings", "openai_base_url", "TEXT")
     ensure_column(conn, "ai_settings", "local_base_url", "TEXT")
     ensure_column(conn, "ai_settings", "chat_enabled", "INTEGER NOT NULL DEFAULT 1")
@@ -1805,6 +1809,15 @@ def apply_light_migrations(conn: sqlite3.Connection) -> None:
     for _alter in [
         "ALTER TABLE patients ADD COLUMN extra_data TEXT DEFAULT '{}'",
         "ALTER TABLE patients ADD COLUMN antecedents TEXT DEFAULT ''",
+        "ALTER TABLE patients ADD COLUMN cin TEXT DEFAULT ''",
+        "ALTER TABLE patients ADD COLUMN tabagisme TEXT DEFAULT ''",
+        "ALTER TABLE patients ADD COLUMN antecedents_chirurgicaux TEXT DEFAULT ''",
+        "ALTER TABLE patients ADD COLUMN antecedents_familiaux TEXT DEFAULT ''",
+        "ALTER TABLE patients ADD COLUMN antecedents_gyneco TEXT DEFAULT ''",
+        "ALTER TABLE patients ADD COLUMN autres_antecedents TEXT DEFAULT ''",
+        "ALTER TABLE patients ADD COLUMN alcool TEXT DEFAULT ''",
+        "ALTER TABLE patients ADD COLUMN sport TEXT DEFAULT ''",
+        "ALTER TABLE visits ADD COLUMN mode_paiement TEXT DEFAULT ''",
         "ALTER TABLE import_jobs ADD COLUMN patients_updated INTEGER NOT NULL DEFAULT 0",
     ]:
         try:
@@ -2895,6 +2908,48 @@ def init_db() -> None:
         seed_prescription_templates(conn)
         seed_visit_types(conn)
         seed_bilan_catalog(conn)
+        # Diagnostics catalog (reference data for diagnosis selection)
+        conn.execute("""CREATE TABLE IF NOT EXISTS diagnostics_catalog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT DEFAULT '',
+            name TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'Autre',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # Tarifs (pricing grid)
+        conn.execute("""CREATE TABLE IF NOT EXISTS tarifs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL,
+            amount REAL NOT NULL DEFAULT 0,
+            category TEXT NOT NULL DEFAULT 'Consultation',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # Actes catalog (medical procedures)
+        conn.execute("""CREATE TABLE IF NOT EXISTS actes_catalog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT DEFAULT '',
+            name TEXT NOT NULL,
+            price REAL NOT NULL DEFAULT 0,
+            category TEXT NOT NULL DEFAULT 'Autre',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        # Doctors table (production audit) — create here too as safety net
+        conn.execute("""CREATE TABLE IF NOT EXISTS doctors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            speciality TEXT DEFAULT '',
+            phone TEXT DEFAULT '',
+            email TEXT DEFAULT '',
+            address TEXT DEFAULT '',
+            order_number TEXT DEFAULT '',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
         for key, default_val in DEFAULT_SETTINGS.items():
             existing = conn.execute("SELECT key FROM app_settings WHERE key = ?", (key,)).fetchone()
             if not existing:
@@ -2973,6 +3028,14 @@ class PatientIn(BaseModel):
     maladies: str | None = None
     notes_importantes: str | None = None
     antecedents: str | None = None
+    cin: str | None = None
+    tabagisme: str | None = None
+    antecedents_chirurgicaux: str | None = None
+    antecedents_familiaux: str | None = None
+    antecedents_gyneco: str | None = None
+    autres_antecedents: str | None = None
+    alcool: str | None = None
+    sport: str | None = None
 
 
 class VisitIn(BaseModel):
@@ -2991,6 +3054,7 @@ class VisitIn(BaseModel):
     fee_paid: float = 0
     payment_status: str = "pending"
     visit_type: str | None = None
+    mode_paiement: str | None = None
 
 
 class PrescriptionIn(BaseModel):
@@ -3110,6 +3174,8 @@ class LabResultIn(BaseModel):
     total_cholesterol: float | None = None
     ldl: float | None = None
     hdl: float | None = None
+    glucose: float | None = None
+    hba1c: float | None = None
     triglycerides: float | None = None
     troponin: float | None = None
     bnp: float | None = None
@@ -3226,7 +3292,60 @@ def dashboard() -> dict[str, Any]:
             "high_risk": conn.execute("SELECT COUNT(*) AS total FROM cardio_profiles WHERE previous_infarction=1 OR previous_stroke=1 OR heart_failure=1 OR vascular_disease=1").fetchone()["total"],
             "urgent_today": conn.execute("SELECT COUNT(*) AS total FROM appointments WHERE status = 'urgent' AND date(scheduled_at) = date('now', 'localtime')").fetchone()["total"],
         }
-    return {"counts": counts, "latest": latest, "appointments_today": appointments_today, "alerts": alerts, "cardio_stats": cardio_stats}
+        # ── Finance: today + this month + total unpaid ────────────────────────
+        finance: dict[str, Any] = {}
+        try:
+            finance["revenue_today"] = (conn.execute(
+                "SELECT COALESCE(SUM(fee_paid),0) AS s FROM visits WHERE date(date_visite)=date('now','localtime')"
+            ).fetchone()["s"] or 0)
+            finance["revenue_month"] = (conn.execute(
+                "SELECT COALESCE(SUM(fee_paid),0) AS s FROM visits WHERE strftime('%Y-%m', date_visite)=strftime('%Y-%m','now','localtime')"
+            ).fetchone()["s"] or 0)
+            finance["unpaid_total"] = (conn.execute(
+                "SELECT COALESCE(SUM(visit_fee - fee_paid),0) AS s FROM visits WHERE COALESCE(visit_fee,0) > COALESCE(fee_paid,0)"
+            ).fetchone()["s"] or 0)
+            finance["visits_today"] = conn.execute(
+                "SELECT COUNT(*) AS c FROM visits WHERE date(date_visite)=date('now','localtime')"
+            ).fetchone()["c"]
+            finance["appointments_today"] = conn.execute(
+                "SELECT COUNT(*) AS c FROM appointments WHERE date(scheduled_at)=date('now','localtime')"
+            ).fetchone()["c"]
+        except Exception:
+            finance = {"revenue_today": 0, "revenue_month": 0, "unpaid_total": 0, "visits_today": 0, "appointments_today": 0}
+        # ── Doctors count ────────────────────────────────────────────────────
+        doctors_count = 0
+        try:
+            doctors_count = conn.execute("SELECT COUNT(*) AS c FROM doctors WHERE is_active=1").fetchone()["c"]
+        except Exception:
+            pass
+        counts["doctors"] = doctors_count
+        # ── Recent imports ───────────────────────────────────────────────────
+        recent_imports: list[dict[str, Any]] = []
+        try:
+            recent_imports = rows_to_dicts(conn.execute(
+                "SELECT id, source_type, source_name, status, patients_inserted, patients_updated, finished_at, created_at FROM import_jobs ORDER BY id DESC LIMIT 5"
+            ).fetchall())
+        except Exception:
+            pass
+        # ── AI usage today (if available) ────────────────────────────────────
+        ai_today = {"requests": 0, "tokens": 0}
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS c, COALESCE(SUM(tokens_used),0) AS t FROM ai_usage_logs WHERE date(created_at)=date('now','localtime')"
+            ).fetchone()
+            ai_today = {"requests": row["c"], "tokens": row["t"] or 0}
+        except Exception:
+            pass
+    return {
+        "counts": counts,
+        "latest": latest,
+        "appointments_today": appointments_today,
+        "alerts": alerts,
+        "cardio_stats": cardio_stats,
+        "finance": finance,
+        "recent_imports": recent_imports,
+        "ai_today": ai_today,
+    }
 
 
 def cardio_summary_for_patient(conn: sqlite3.Connection, patient_id: int) -> dict[str, Any]:
@@ -3457,8 +3576,10 @@ def create_patient(payload: PatientIn) -> dict[str, Any]:
             """
             INSERT INTO patients
             (code, nom, prenom, date_naissance, age, sexe, groupe_sanguin, situation_familiale,
-             adresse, telephone, profession, oriente_par, allergies, maladies, notes_importantes, antecedents, qr_token)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             adresse, telephone, profession, oriente_par, allergies, maladies, notes_importantes,
+             antecedents, cin, tabagisme, antecedents_chirurgicaux, antecedents_familiaux,
+             antecedents_gyneco, autres_antecedents, alcool, sport, qr_token)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 code,
@@ -3477,6 +3598,14 @@ def create_patient(payload: PatientIn) -> dict[str, Any]:
                 payload.maladies,
                 payload.notes_importantes,
                 payload.antecedents or "",
+                payload.cin or "",
+                payload.tabagisme or "",
+                payload.antecedents_chirurgicaux or "",
+                payload.antecedents_familiaux or "",
+                payload.antecedents_gyneco or "",
+                payload.autres_antecedents or "",
+                payload.alcool or "",
+                payload.sport or "",
                 token,
             ),
         )
@@ -3573,7 +3702,9 @@ def update_patient(patient_id: int, payload: PatientIn) -> dict[str, Any]:
             UPDATE patients SET
             code=?, nom=?, prenom=?, date_naissance=?, age=?, sexe=?, groupe_sanguin=?,
             situation_familiale=?, adresse=?, telephone=?, profession=?, oriente_par=?,
-            allergies=?, maladies=?, notes_importantes=?, antecedents=?, updated_at=?
+            allergies=?, maladies=?, notes_importantes=?, antecedents=?, cin=?, tabagisme=?,
+            antecedents_chirurgicaux=?, antecedents_familiaux=?, antecedents_gyneco=?,
+            autres_antecedents=?, alcool=?, sport=?, updated_at=?
             WHERE id=?
             """,
             (
@@ -3593,6 +3724,14 @@ def update_patient(patient_id: int, payload: PatientIn) -> dict[str, Any]:
                 payload.maladies,
                 payload.notes_importantes,
                 payload.antecedents or "",
+                payload.cin or "",
+                payload.tabagisme or "",
+                payload.antecedents_chirurgicaux or "",
+                payload.antecedents_familiaux or "",
+                payload.antecedents_gyneco or "",
+                payload.autres_antecedents or "",
+                payload.alcool or "",
+                payload.sport or "",
                 now_iso(),
                 patient_id,
             ),
@@ -3626,8 +3765,8 @@ def create_visit(patient_id: int, payload: VisitIn) -> dict[str, Any]:
             INSERT INTO visits
             (patient_id, date_visite, motif, histoire, examens, diagnostics, traitements,
              tension, frequence_cardiaque, glycemie, poids, taille,
-             visit_fee, fee_paid, payment_status, visit_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             visit_fee, fee_paid, payment_status, visit_type, mode_paiement)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 patient_id,
@@ -3646,6 +3785,7 @@ def create_visit(patient_id: int, payload: VisitIn) -> dict[str, Any]:
                 payload.fee_paid,
                 payload.payment_status if payload.fee_paid >= payload.visit_fee and payload.visit_fee > 0 else ("partial" if payload.fee_paid > 0 else "pending"),
                 payload.visit_type,
+                payload.mode_paiement or "",
             ),
         )
         visit_id = cur.lastrowid
@@ -3724,12 +3864,12 @@ def add_labs(patient_id: int, payload: LabResultIn) -> dict[str, Any]:
         cur = conn.execute(
             """
             INSERT INTO lab_results
-            (patient_id, measured_at, total_cholesterol, ldl, hdl, triglycerides, troponin, bnp, nt_probnp, creatinine, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (patient_id, measured_at, total_cholesterol, ldl, hdl, glucose, hba1c, triglycerides, troponin, bnp, nt_probnp, creatinine, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 patient_id, payload.measured_at or now_iso(), payload.total_cholesterol, payload.ldl, payload.hdl,
-                payload.triglycerides, payload.troponin, payload.bnp, payload.nt_probnp, payload.creatinine, payload.notes,
+                payload.glucose, payload.hba1c, payload.triglycerides, payload.troponin, payload.bnp, payload.nt_probnp, payload.creatinine, payload.notes,
             ),
         )
         lab_id = cur.lastrowid
@@ -5540,7 +5680,13 @@ LAB_RESULT_FIELD_MAP = {
     "cholesterol total": "total_cholesterol",
     "ldl": "ldl",
     "hdl": "hdl",
+    "glucose": "glucose",
+    "glycemie": "glucose",
+    "glycemie a jeun": "glucose",
     "triglycerides": "triglycerides",
+    "hba1c": "hba1c",
+    "hb a1c": "hba1c",
+    "hemoglobine glyquee": "hba1c",
     "troponin": "troponin",
     "bnp": "bnp",
     "nt-probnp": "nt_probnp",
@@ -5549,9 +5695,47 @@ LAB_RESULT_FIELD_MAP = {
 }
 
 
+VITAL_FIELD_MAP = {
+    "tas": "systolic_bp",
+    "pas": "systolic_bp",
+    "sbp": "systolic_bp",
+    "pression systolique": "systolic_bp",
+    "tad": "diastolic_bp",
+    "pad": "diastolic_bp",
+    "dbp": "diastolic_bp",
+    "pression diastolique": "diastolic_bp",
+    "fc": "heart_rate",
+    "hr": "heart_rate",
+    "frequence cardiaque": "heart_rate",
+    "pouls": "heart_rate",
+}
+
+
+def normalize_analyte_key(analyte: str) -> str:
+    text = unicodedata.normalize("NFKD", str(analyte or "")).encode("ascii", "ignore").decode("ascii")
+    text = text.lower().replace("-", " ")
+    text = re.sub(r"[^a-z0-9/% ]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def lab_result_field_for_analyte(analyte: str) -> str | None:
     normalized = analyte.strip().lower().replace("é", "e").replace("è", "e")
     return LAB_RESULT_FIELD_MAP.get(normalized)
+
+def lab_result_field_for_analyte(analyte: str) -> str | None:
+    return LAB_RESULT_FIELD_MAP.get(normalize_analyte_key(analyte))
+
+
+def vital_field_for_analyte(analyte: str) -> str | None:
+    return VITAL_FIELD_MAP.get(normalize_analyte_key(analyte))
+
+
+def parse_bp_value_pair(value: Any) -> tuple[int, int] | None:
+    text = str(value or "").strip()
+    match = re.search(r"(\d{2,3})\s*[/\-]\s*(\d{2,3})", text)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
 
 
 @app.post("/api/patients/{patient_id}/documents", status_code=201)
@@ -5565,12 +5749,20 @@ async def upload_document(
 
 
 @app.get("/api/documents/{document_id}")
-def download_document(document_id: int) -> FileResponse:
+def download_document(document_id: int, download: int = 0) -> FileResponse:
     with connect() as conn:
         row = conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Document introuvable")
-    return FileResponse(row["stored_path"], filename=row["original_name"])
+    original_name = row["original_name"] or "document"
+    mime = row["mime_type"] or "application/octet-stream"
+    # Inline by default so PDFs/images render in iframe/img preview (no auto-download)
+    # Pass ?download=1 to force browser download.
+    if download:
+        return FileResponse(row["stored_path"], filename=original_name, media_type=mime)
+    safe_name = original_name.replace('"', "'")
+    headers = {"Content-Disposition": f'inline; filename="{safe_name}"'}
+    return FileResponse(row["stored_path"], media_type=mime, headers=headers)
 
 
 @app.put("/api/documents/{document_id}/notes")
@@ -5696,13 +5888,22 @@ def api_save_ai_labs(analysis_id: int, payload: AISaveLabsIn | None = None) -> d
                     (analysis_id,),
                 ).fetchall()
             ]
-        mapped: dict[str, float] = {}
+        mapped_labs: dict[str, float] = {}
+        mapped_vitals: dict[str, int] = {}
         confirmed_ids: list[int] = []
         for item in values:
-            field = lab_result_field_for_analyte(item.analyte)
             number = parse_float(item.value)
-            if field and number is not None:
-                mapped[field] = number
+            bp_pair = parse_bp_value_pair(item.value)
+            normalized_analyte = normalize_analyte_key(item.analyte)
+            if normalized_analyte in {"ta", "tension", "tension arterielle", "blood pressure"} and bp_pair:
+                mapped_vitals["systolic_bp"], mapped_vitals["diastolic_bp"] = bp_pair
+            else:
+                lab_field = lab_result_field_for_analyte(item.analyte)
+                vital_field = vital_field_for_analyte(item.analyte)
+                if lab_field and number is not None:
+                    mapped_labs[lab_field] = number
+                if vital_field and number is not None:
+                    mapped_vitals[vital_field] = int(round(number))
             if item.id:
                 conn.execute(
                     """
@@ -5733,19 +5934,36 @@ def api_save_ai_labs(analysis_id: int, payload: AISaveLabsIn | None = None) -> d
                 )
                 confirmed_ids.append(cur.lastrowid)
         lab_result_id = None
-        if mapped:
-            columns = ["patient_id", "measured_at", "notes", *mapped.keys()]
+        vital_result_id = None
+        if mapped_labs:
+            columns = ["patient_id", "measured_at", "notes", *mapped_labs.keys()]
             placeholders = ", ".join("?" for _ in columns)
             notes = f"Valeurs confirmees depuis analyse IA document {analysis['document_id']}. {AI_SAFETY_WARNING}"
-            params = [analysis["patient_id"], now_iso(), notes, *mapped.values()]
+            params = [analysis["patient_id"], now_iso(), notes, *mapped_labs.values()]
             cur = conn.execute(
                 f"INSERT INTO lab_results ({', '.join(columns)}) VALUES ({placeholders})",
                 params,
             )
             lab_result_id = cur.lastrowid
+        if mapped_vitals:
+            columns = ["patient_id", "measured_at", "notes", *mapped_vitals.keys()]
+            placeholders = ", ".join("?" for _ in columns)
+            notes = f"Constantes confirmees depuis analyse IA document {analysis['document_id']}. {AI_SAFETY_WARNING}"
+            params = [analysis["patient_id"], now_iso(), notes, *mapped_vitals.values()]
+            cur = conn.execute(
+                f"INSERT INTO vital_signs ({', '.join(columns)}) VALUES ({placeholders})",
+                params,
+            )
+            vital_result_id = cur.lastrowid
         result = analysis_to_dict(conn, get_ai_analysis_or_404(conn, analysis_id))
-    audit("create", "extracted_lab_values", analysis_id, "Valeurs biologiques IA confirmees")
-    return {"ok": True, "analysis": result, "confirmed_ids": confirmed_ids, "lab_result_id": lab_result_id}
+    audit("create", "extracted_lab_values", analysis_id, "Valeurs cliniques IA confirmees")
+    return {
+        "ok": True,
+        "analysis": result,
+        "confirmed_ids": confirmed_ids,
+        "lab_result_id": lab_result_id,
+        "vital_result_id": vital_result_id,
+    }
 
 
 @app.post("/api/ai/test-provider")
@@ -6448,7 +6666,11 @@ def gestion_db_medicines_list(q: str = "", limit: int = 500) -> dict[str, Any]:
     """Parse GestionMedicale SQL backup → personal medicine list with usage counts."""
     import re as _re
 
-    sql_path = Path(__file__).parent.parent / "GestionMedicaleDBbackup_02-05-2026.sql"
+    import glob as _glob
+    _sql_candidates = sorted(
+        _glob.glob(str(Path(__file__).parent.parent / "GestionMedicaleDBbackup*.sql")), reverse=True
+    )
+    sql_path = Path(_sql_candidates[0]) if _sql_candidates else Path("")
     if not sql_path.exists():
         return {"rows": [], "total": 0, "error": "Fichier SQL introuvable"}
 
@@ -6840,6 +7062,381 @@ async def import_gestion_medicale_sql(
         "errors": errors[:20],
         "filename": file.filename,
     }
+
+
+@app.post("/api/import/gestion-medicale-full")
+async def import_gestion_medicale_full() -> dict[str, Any]:
+    """Full one-click import from the GestionMedicale SQL backup on disk.
+    Reads the latest GestionMedicaleDBbackup*.sql in the project root.
+    Imports: patients, consultations→visits (with fees/vitals), appointments,
+             medicines, antécédents→patient fields, exam results, ordonnances,
+             courriers. Fully idempotent via legacy IDs.
+    """
+    import secrets as _secrets
+    import glob as _glob
+
+    # ── 1. Locate the SQL file ────────────────────────────────────────────────
+    _candidates = sorted(
+        _glob.glob(str(Path(__file__).parent.parent / "GestionMedicaleDBbackup*.sql")),
+        reverse=True,
+    )
+    if not _candidates:
+        raise HTTPException(404, "Aucun fichier GestionMedicaleDBbackup*.sql trouvé.")
+    sql_path = _candidates[0]
+    try:
+        raw = Path(sql_path).read_bytes()
+        text = raw.decode("utf-8", errors="replace")
+    except Exception as e:
+        raise HTTPException(500, f"Lecture du fichier impossible: {e}")
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    def _v(row: list, idx: int) -> str:
+        return ("" if idx >= len(row) or row[idx] is None else str(row[idx])).strip()
+
+    def _f(row: list, idx: int) -> float:
+        try: return float(_v(row, idx).replace(",", ".") or 0)
+        except: return 0.0
+
+    def _norm_sex(v: str) -> str:
+        s = v.lower()
+        if s.startswith("m") or s == "1" or "homme" in s or "masc" in s: return "Masculin"
+        if s.startswith("f") or s == "2" or "femme" in s or "fem" in s:  return "Féminin"
+        return v
+
+    def _norm_date(v: str) -> str:
+        if not v or v.startswith("0000"): return ""
+        return v.split(" ")[0][:10]
+
+    def _build_addr(row: list, P: dict) -> str:
+        return ", ".join(p for p in [_v(row, P["village"]), _v(row, P["commune_name"]), _v(row, P["wilaya_name"])] if p)
+
+    # ── 2. Parse all tables ───────────────────────────────────────────────────
+    P = {  # patient column indices
+        "id": 0, "wilaya_name": 5, "commune_name": 9, "village": 10,
+        "first_name": 11, "last_name": 12, "sexe": 13, "birthday": 14,
+        "age": 15, "phone": 16, "mobile1": 18, "mobile2": 19,
+        "situation": 21, "profession": 30, "unique_code": 32,
+        "atcd": 41, "blood": 45, "oriented_by": 51,
+    }
+    patient_rows   = _parse_mysql_inserts(text, "patient")
+    consult_rows   = _parse_mysql_inserts(text, "consultation")
+    appt_rows      = _parse_mysql_inserts(text, "appointments")
+    medicine_rows  = _parse_mysql_inserts(text, "medicine")
+    antecedent_rows= _parse_mysql_inserts(text, "antecedent")
+    exam_rows      = _parse_mysql_inserts(text, "examenpatientstore")
+    ordonnance_rows= _parse_mysql_inserts(text, "ordonnance")
+    ordmed_rows    = _parse_mysql_inserts(text, "ordonnancemedicine")
+    courrier_rows  = _parse_mysql_inserts(text, "courrier")
+
+    report = {
+        "sql_file": Path(sql_path).name,
+        "patients":      {"imported": 0, "skipped": 0, "errors": []},
+        "visits":        {"imported": 0, "skipped": 0, "errors": []},
+        "appointments":  {"imported": 0, "skipped": 0},
+        "medicines":     {"imported": 0, "updated": 0},
+        "antecedents":   {"updated": 0},
+        "exams":         {"attached": 0},
+        "ordonnances":   {"attached": 0},
+        "courriers":     {"imported": 0},
+    }
+
+    with connect() as conn:
+
+        # ── 3. PATIENTS ───────────────────────────────────────────────────────
+        legacy_to_ms: dict[int, int] = {}  # legacy_patient_id → patients.id
+        for row in patient_rows:
+            try:
+                leg_id_str = _v(row, P["id"])
+                if not leg_id_str.isdigit():
+                    report["patients"]["skipped"] += 1; continue
+                leg_id = int(leg_id_str)
+                existing = conn.execute(
+                    "SELECT id FROM patients WHERE legacy_patient_id=? LIMIT 1", (leg_id,)
+                ).fetchone()
+                if existing:
+                    legacy_to_ms[leg_id] = existing[0]
+                    report["patients"]["skipped"] += 1; continue
+                nom    = _v(row, P["last_name"])  or "INCONNU"
+                prenom = _v(row, P["first_name"]) or "INCONNU"
+                phone  = _v(row, P["phone"]) or _v(row, P["mobile1"]) or _v(row, P["mobile2"])
+                age_s  = _v(row, P["age"])
+                age_i  = int(age_s) if age_s.isdigit() else None
+                code   = _v(row, P["unique_code"]) or f"GM{leg_id}"
+                if conn.execute("SELECT 1 FROM patients WHERE code=? LIMIT 1", (code,)).fetchone():
+                    code = f"{code}-{leg_id}"
+                cur = conn.execute(
+                    """INSERT INTO patients
+                       (code,nom,prenom,date_naissance,age,sexe,groupe_sanguin,
+                        situation_familiale,adresse,telephone,profession,oriente_par,
+                        maladies,qr_token,legacy_patient_id)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (code, nom, prenom, _norm_date(_v(row, P["birthday"])), age_i,
+                     _norm_sex(_v(row, P["sexe"])), _v(row, P["blood"]),
+                     _v(row, P["situation"]), _build_addr(row, P), phone,
+                     _v(row, P["profession"]), _v(row, P["oriented_by"]),
+                     _v(row, P["atcd"]), _secrets.token_hex(16), leg_id),
+                )
+                ms_id = cur.lastrowid
+                legacy_to_ms[leg_id] = ms_id
+                report["patients"]["imported"] += 1
+            except Exception as e:
+                report["patients"]["errors"].append(str(e)[:120])
+
+        # Rebuild FTS so new patients appear in search
+        try: rebuild_patients_fts(conn)
+        except Exception: pass
+        conn.commit()
+
+        # ── 4. ANTECEDENTS → enrich patients.maladies ────────────────────────
+        for row in antecedent_rows:
+            try:
+                leg_pid = _v(row, 5)
+                if not leg_pid.isdigit(): continue
+                ms_id = legacy_to_ms.get(int(leg_pid))
+                if not ms_id:
+                    r = conn.execute("SELECT id FROM patients WHERE legacy_patient_id=?", (int(leg_pid),)).fetchone()
+                    ms_id = r[0] if r else None
+                if not ms_id: continue
+                parts = [_v(row, 1), _v(row, 2), _v(row, 3), _v(row, 7)]
+                text_atcd = " | ".join(p for p in parts if p)
+                if not text_atcd: continue
+                existing = conn.execute("SELECT maladies FROM patients WHERE id=?", (ms_id,)).fetchone()
+                if existing and not (existing[0] or "").strip():
+                    conn.execute("UPDATE patients SET maladies=?, updated_at=? WHERE id=?",
+                                 (text_atcd, now_iso(), ms_id))
+                    report["antecedents"]["updated"] += 1
+            except Exception: pass
+        conn.commit()
+
+        # ── 5. CONSULTATIONS → visits ─────────────────────────────────────────
+        # consultation columns: 0=id, 1=patient_id, 2=motif_label, 3=fee_total,
+        # 4=fee_paid, 5=date, 6=diagnostics, 9=chief_complaint, 10=poids,
+        # 11=taille, 13=examens, 14=traitements, 18=tension_sys, 19=tension_dia,
+        # 20=glycemie_or_fc
+        for row in consult_rows:
+            try:
+                leg_cid_s = _v(row, 0)
+                if not leg_cid_s.isdigit(): continue
+                leg_cid = int(leg_cid_s)
+                if conn.execute("SELECT 1 FROM visits WHERE legacy_consultation_id=? LIMIT 1", (leg_cid,)).fetchone():
+                    report["visits"]["skipped"] += 1; continue
+                leg_pid_s = _v(row, 1)
+                if not leg_pid_s.isdigit(): continue
+                leg_pid = int(leg_pid_s)
+                ms_pid = legacy_to_ms.get(leg_pid)
+                if not ms_pid:
+                    r = conn.execute("SELECT id FROM patients WHERE legacy_patient_id=?", (leg_pid,)).fetchone()
+                    ms_pid = r[0] if r else None
+                if not ms_pid:
+                    report["visits"]["skipped"] += 1; continue
+                date_v  = _norm_date(_v(row, 5)) or now_iso()[:10]
+                fee     = _f(row, 3)
+                fee_paid= _f(row, 4)
+                motif   = _v(row, 9) or _v(row, 2) or ""
+                diag    = _v(row, 6)
+                examens = _v(row, 13)
+                traitem = _v(row, 14)
+                poids   = _f(row, 10) or None
+                taille  = _f(row, 11) or None
+                ta_s    = _v(row, 18)
+                ta_d    = _v(row, 19)
+                tension = f"{ta_s}/{ta_d}" if ta_s and ta_d else (ta_s or "")
+                glyc    = _v(row, 20)
+                ps = "paid" if fee > 0 and fee_paid >= fee else ("partial" if fee_paid > 0 else "pending")
+                conn.execute(
+                    """INSERT INTO visits
+                       (patient_id,date_visite,motif,diagnostics,traitements,examens,
+                        tension,glycemie,poids,taille,visit_fee,fee_paid,payment_status,
+                        legacy_consultation_id,created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (ms_pid, date_v, motif, diag, traitem, examens,
+                     tension, glyc, poids, taille, fee, fee_paid, ps,
+                     leg_cid, now_iso()),
+                )
+                report["visits"]["imported"] += 1
+            except Exception as e:
+                report["visits"]["errors"].append(str(e)[:120])
+        conn.commit()
+
+        # ── 6. APPOINTMENTS ───────────────────────────────────────────────────
+        # appointments columns: 0=id,1=date_debut,2=date_fin,3=patient_id(legacy),
+        # 4=type,5=int,6=lieu,7=titre,8=notes,9=something
+        for row in appt_rows:
+            try:
+                leg_pid_s = _v(row, 3)
+                if not leg_pid_s.isdigit() or leg_pid_s == "0": continue
+                leg_pid = int(leg_pid_s)
+                ms_pid = legacy_to_ms.get(leg_pid)
+                if not ms_pid:
+                    r = conn.execute("SELECT id FROM patients WHERE legacy_patient_id=?", (leg_pid,)).fetchone()
+                    ms_pid = r[0] if r else None
+                if not ms_pid: continue
+                scheduled = _norm_date(_v(row, 1)) or now_iso()[:10]
+                title = _v(row, 7) or _v(row, 4) or "Rendez-vous"
+                notes = _v(row, 8)
+                if conn.execute(
+                    "SELECT 1 FROM appointments WHERE patient_id=? AND scheduled_at=? LIMIT 1",
+                    (ms_pid, scheduled)
+                ).fetchone(): continue
+                conn.execute(
+                    "INSERT INTO appointments (patient_id,scheduled_at,title,status,notes,created_at) VALUES (?,?,?,?,?,?)",
+                    (ms_pid, scheduled, title, "done", notes, now_iso()),
+                )
+                report["appointments"]["imported"] += 1
+            except Exception: pass
+        conn.commit()
+
+        # ── 7. MEDICINES ──────────────────────────────────────────────────────
+        for row in medicine_rows:
+            try:
+                name  = (_v(row, 1) or "").strip()
+                if not name: continue
+                dosage= _v(row, 2); cond = _v(row, 3); dci = _v(row, 7)
+                lab   = _v(row, 8); qty  = _v(row, 10); poso = _v(row, 11)
+                existing = conn.execute(
+                    "SELECT id,dosage_strength,dci,laboratory,default_posology,default_quantity,form "
+                    "FROM medicines_db WHERE lower(brand_name)=lower(?) "
+                    "AND (dosage_strength IS NULL OR dosage_strength='' OR lower(dosage_strength)=lower(?)) LIMIT 1",
+                    (name, dosage),
+                ).fetchone()
+                if existing:
+                    upds, params = [], []
+                    for col, val in [("dosage_strength",dosage),("dci",dci),("laboratory",lab),
+                                     ("default_posology",poso),("default_quantity",qty),("form",cond)]:
+                        if val and not (existing[col] if col in existing.keys() else None):
+                            upds.append(f"{col}=?"); params.append(val)
+                    if upds:
+                        params.append(existing["id"])
+                        conn.execute(f"UPDATE medicines_db SET {','.join(upds)},last_updated=CURRENT_TIMESTAMP WHERE id=?", params)
+                        report["medicines"]["updated"] += 1
+                else:
+                    conn.execute(
+                        "INSERT INTO medicines_db (brand_name,dci,dosage_strength,form,laboratory,default_posology,default_quantity,source) VALUES (?,?,?,?,?,?,?,?)",
+                        (name, dci, dosage, cond, lab, poso, qty, "gestion_medicale"),
+                    )
+                    report["medicines"]["imported"] += 1
+            except Exception: pass
+        conn.commit()
+
+        # ── 8. ORDONNANCES → attach prescription text to visits ───────────────
+        # Build ordonnance_id → medicine lines map from ordonnancemedicine
+        # ordonnancemedicine: 0=id,1=ordonnance_id,3=med_id,6=brand,7=posologie,8=qte,10=dosage,11=dci
+        ord_lines: dict[str, list] = {}
+        for row in ordmed_rows:
+            try:
+                oid = _v(row, 1)
+                if not oid: continue
+                brand = _v(row, 6) or _v(row, 4) or "?"
+                poso  = _v(row, 7); dos = _v(row, 10); qte = _v(row, 8)
+                line  = brand + (f" {dos}" if dos else "") + (f" — {poso}" if poso else "") + (f" ({qte})" if qte else "")
+                ord_lines.setdefault(oid, []).append(line)
+            except Exception: pass
+        # ordonnance: 0=id,3=patient_id(legacy),4=date
+        for row in ordonnance_rows:
+            try:
+                oid = _v(row, 0); leg_pid_s = _v(row, 3)
+                if not oid or not leg_pid_s.isdigit(): continue
+                leg_pid = int(leg_pid_s)
+                ms_pid = legacy_to_ms.get(leg_pid)
+                if not ms_pid:
+                    r = conn.execute("SELECT id FROM patients WHERE legacy_patient_id=?", (leg_pid,)).fetchone()
+                    ms_pid = r[0] if r else None
+                if not ms_pid: continue
+                lines = ord_lines.get(oid, [])
+                if not lines: continue
+                prescription_text = "\n".join(lines)
+                date_ord = _norm_date(_v(row, 4)) or ""
+                # Find matching visit (same patient + date)
+                visit = conn.execute(
+                    "SELECT id, traitements FROM visits WHERE patient_id=? AND date_visite=? ORDER BY id DESC LIMIT 1",
+                    (ms_pid, date_ord),
+                ).fetchone() if date_ord else None
+                if visit:
+                    existing_t = (visit["traitements"] or "").strip()
+                    if not existing_t:
+                        conn.execute("UPDATE visits SET traitements=? WHERE id=?", (prescription_text, visit["id"]))
+                        report["ordonnances"]["attached"] += 1
+                    elif prescription_text not in existing_t:
+                        conn.execute("UPDATE visits SET traitements=? WHERE id=?",
+                                     (existing_t + "\n" + prescription_text, visit["id"]))
+                        report["ordonnances"]["attached"] += 1
+            except Exception: pass
+        conn.commit()
+
+        # ── 9. EXAM RESULTS → attach to visits ───────────────────────────────
+        # examenpatientstore: 0=id,1=date,2=patient_id(legacy),3=type,4=nom,6=valeur
+        exam_by_visit: dict[tuple, list] = {}
+        for row in exam_rows:
+            try:
+                leg_pid_s = _v(row, 2)
+                if not leg_pid_s.isdigit(): continue
+                date_e = _norm_date(_v(row, 1))
+                key = (int(leg_pid_s), date_e)
+                nom = _v(row, 4); val = _v(row, 6)
+                line = f"{nom}: {val}" if val and val not in ("0.0", "0.0000", "0") else nom
+                exam_by_visit.setdefault(key, []).append(line)
+            except Exception: pass
+        for (leg_pid, date_e), lines in exam_by_visit.items():
+            try:
+                ms_pid = legacy_to_ms.get(leg_pid)
+                if not ms_pid:
+                    r = conn.execute("SELECT id FROM patients WHERE legacy_patient_id=?", (leg_pid,)).fetchone()
+                    ms_pid = r[0] if r else None
+                if not ms_pid: continue
+                exam_text = ", ".join(lines)
+                visit = conn.execute(
+                    "SELECT id, examens FROM visits WHERE patient_id=? AND date_visite=? ORDER BY id DESC LIMIT 1",
+                    (ms_pid, date_e),
+                ).fetchone() if date_e else None
+                if visit:
+                    existing_e = (visit["examens"] or "").strip()
+                    if not existing_e:
+                        conn.execute("UPDATE visits SET examens=? WHERE id=?", (exam_text, visit["id"]))
+                        report["exams"]["attached"] += 1
+            except Exception: pass
+        conn.commit()
+
+        # ── 10. COURRIERS → store as visits with motif "Courrier" ─────────────
+        # courrier: 0=id,1=patient_id(legacy),3=date,5=text
+        for row in courrier_rows:
+            try:
+                leg_pid_s = _v(row, 1)
+                if not leg_pid_s.isdigit(): continue
+                leg_pid = int(leg_pid_s)
+                ms_pid = legacy_to_ms.get(leg_pid)
+                if not ms_pid:
+                    r = conn.execute("SELECT id FROM patients WHERE legacy_patient_id=?", (leg_pid,)).fetchone()
+                    ms_pid = r[0] if r else None
+                if not ms_pid: continue
+                date_c = _norm_date(_v(row, 3)) or now_iso()[:10]
+                content = _v(row, 5) or _v(row, 4) or ""
+                if not content: continue
+                # Don't re-import same courrier (match by patient+date+first 50 chars)
+                snippet = content[:50]
+                if conn.execute(
+                    "SELECT 1 FROM visits WHERE patient_id=? AND date_visite=? AND motif='Courrier' AND histoire LIKE ? LIMIT 1",
+                    (ms_pid, date_c, snippet + "%"),
+                ).fetchone(): continue
+                conn.execute(
+                    "INSERT INTO visits (patient_id,date_visite,motif,histoire,created_at) VALUES (?,?,?,?,?)",
+                    (ms_pid, date_c, "Courrier", content, now_iso()),
+                )
+                report["courriers"]["imported"] += 1
+            except Exception: pass
+        conn.commit()
+
+    report["total_imported"] = (
+        report["patients"]["imported"] + report["visits"]["imported"] +
+        report["appointments"]["imported"] + report["medicines"]["imported"] +
+        report["courriers"]["imported"]
+    )
+    report["source_counts"] = {
+        "patients": len(patient_rows), "consultations": len(consult_rows),
+        "appointments": len(appt_rows), "medicines": len(medicine_rows),
+        "antecedents": len(antecedent_rows), "exams": len(exam_rows),
+        "ordonnances": len(ordonnance_rows), "courriers": len(courrier_rows),
+    }
+    return report
 
 
 @app.post("/api/medicines")
@@ -7528,6 +8125,16 @@ def update_document_template(template_id: int, payload: DocumentTemplateIn) -> d
             (payload.name, payload.category, payload.body_html, 1 if payload.is_default else 0, now_iso(), template_id),
         )
     audit("update", "document_templates", template_id, payload.name)
+    return {"ok": True}
+
+
+@app.delete("/api/document-templates/{template_id}")
+def delete_document_template(template_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        exists = conn.execute("SELECT id FROM document_templates WHERE id = ?", (template_id,)).fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Modele introuvable")
+        conn.execute("DELETE FROM document_templates WHERE id = ?", (template_id,))
     return {"ok": True}
 
 
@@ -8686,15 +9293,29 @@ def patient_finance(patient_id: int) -> dict[str, Any]:
 
 @app.put("/api/visits/{visit_id}/payment")
 def update_visit_payment(visit_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-    """Update payment for a visit."""
+    """Update payment for a visit (fee_paid, mode_paiement, visit_fee, visit_type)."""
     fee_paid = float(payload.get("fee_paid", 0))
+    mode_paiement = payload.get("mode_paiement")
+    visit_fee_override = payload.get("visit_fee")
+    visit_type_override = payload.get("visit_type")
     with connect() as conn:
-        visit = conn.execute("SELECT visit_fee FROM visits WHERE id=?", (visit_id,)).fetchone()
+        visit = conn.execute("SELECT visit_fee, visit_type FROM visits WHERE id=?", (visit_id,)).fetchone()
         if not visit:
             raise HTTPException(status_code=404, detail="Visite introuvable")
-        status = "paid" if fee_paid >= visit["visit_fee"] and visit["visit_fee"] > 0 else ("partial" if fee_paid > 0 else "pending")
-        conn.execute("UPDATE visits SET fee_paid=?, payment_status=? WHERE id=?", (fee_paid, status, visit_id))
-    return {"ok": True, "payment_status": status}
+        actual_fee = float(visit_fee_override) if visit_fee_override is not None else float(visit["visit_fee"] or 0)
+        if visit_fee_override is not None:
+            conn.execute("UPDATE visits SET visit_fee=? WHERE id=?", (actual_fee, visit_id))
+        if visit_type_override is not None:
+            conn.execute("UPDATE visits SET visit_type=? WHERE id=?", (visit_type_override, visit_id))
+        status = "paid" if fee_paid >= actual_fee and actual_fee > 0 else ("partial" if fee_paid > 0 else "pending")
+        sets = "fee_paid=?, payment_status=?"
+        params: list[Any] = [fee_paid, status]
+        if mode_paiement is not None:
+            sets += ", mode_paiement=?"
+            params.append(mode_paiement)
+        params.append(visit_id)
+        conn.execute(f"UPDATE visits SET {sets} WHERE id=?", params)
+    return {"ok": True, "payment_status": status, "fee_paid": fee_paid, "visit_fee": actual_fee}
 
 
 # =====================================================================
@@ -8743,6 +9364,123 @@ def list_appointments_filtered(
             params,
         ).fetchone()
     return {"rows": rows, "total": counts["total"] if counts else 0, "urgent": counts["urgent"] if counts else 0}
+
+
+@app.get("/api/visits/today")
+def list_visits_today(date: str = "") -> dict[str, Any]:
+    """
+    Return all visits for a given date (default: today) joined with the patient record.
+    Used by the 'Patients vus aujourd'hui' page.
+    """
+    target = date or ""
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            """
+            SELECT
+                v.id AS visit_id,
+                v.date_visite,
+                v.motif,
+                v.diagnostics,
+                v.traitements,
+                v.visit_type,
+                v.visit_fee,
+                v.fee_paid,
+                v.payment_status,
+                v.payment_method,
+                p.id AS patient_id,
+                p.code,
+                p.nom,
+                p.prenom,
+                p.telephone,
+                p.age,
+                p.sexe
+            FROM visits v
+            LEFT JOIN patients p ON p.id = v.patient_id
+            WHERE date(v.date_visite) = CASE WHEN ? = '' THEN date('now','localtime') ELSE date(?) END
+            ORDER BY v.date_visite ASC
+            """,
+            (target, target),
+        ).fetchall())
+
+        total_fees = sum(float(r.get("visit_fee") or 0) for r in rows)
+        total_paid = sum(float(r.get("fee_paid") or 0) for r in rows)
+        total_due = max(total_fees - total_paid, 0)
+
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "total_fees": total_fees,
+        "total_paid": total_paid,
+        "total_due": total_due,
+        "date": target or None,
+    }
+
+
+@app.get("/api/patients/{patient_id}/quick-summary")
+def patient_quick_summary(patient_id: int) -> dict[str, Any]:
+    """
+    Compact summary used by the patient details modal in 'Liste des patients'.
+    """
+    with connect() as conn:
+        patient = conn.execute("SELECT * FROM patients WHERE id = ?", (patient_id,)).fetchone()
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient introuvable")
+        last_visit = conn.execute(
+            "SELECT * FROM visits WHERE patient_id = ? ORDER BY date_visite DESC LIMIT 1",
+            (patient_id,),
+        ).fetchone()
+        last_prescription = conn.execute(
+            "SELECT * FROM prescriptions WHERE patient_id = ? ORDER BY created_at DESC LIMIT 1",
+            (patient_id,),
+        ).fetchone()
+        documents_count = conn.execute(
+            "SELECT COUNT(*) AS total FROM documents WHERE patient_id = ?",
+            (patient_id,),
+        ).fetchone()["total"]
+        fees = conn.execute(
+            """SELECT
+                COALESCE(SUM(visit_fee), 0) AS total_fees,
+                COALESCE(SUM(fee_paid), 0) AS total_paid,
+                COUNT(*) AS visit_count
+            FROM visits WHERE patient_id = ?""",
+            (patient_id,),
+        ).fetchone()
+    total_fees = float(fees["total_fees"] or 0)
+    total_paid = float(fees["total_paid"] or 0)
+    return {
+        "patient": dict(patient),
+        "last_visit": dict(last_visit) if last_visit else None,
+        "last_prescription": dict(last_prescription) if last_prescription else None,
+        "documents_count": documents_count,
+        "visit_count": int(fees["visit_count"] or 0),
+        "total_fees": total_fees,
+        "total_paid": total_paid,
+        "total_due": max(total_fees - total_paid, 0),
+    }
+
+
+@app.get("/api/finance/today-summary")
+def finance_today_summary() -> dict[str, Any]:
+    """Compact finance stats for the 'Patients vus aujourd'hui' cards."""
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS visits,
+                COALESCE(SUM(visit_fee), 0) AS total_fees,
+                COALESCE(SUM(fee_paid), 0) AS total_paid
+            FROM visits
+            WHERE date(date_visite) = date('now','localtime')
+            """
+        ).fetchone()
+    total_fees = float(row["total_fees"] or 0)
+    total_paid = float(row["total_paid"] or 0)
+    return {
+        "visits": int(row["visits"] or 0),
+        "total_fees": total_fees,
+        "total_paid": total_paid,
+        "total_due": max(total_fees - total_paid, 0),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -8857,13 +9595,22 @@ async def import_execute(body: dict = Body(...)):
 
     patient_table = body.get("patient_table", s["tables"][0] if s["tables"] else "")
     visit_table = body.get("visit_table", "")
+    appointment_table = body.get("appointment_table", "")
+    medication_table = body.get("medication_table", "")
+    payment_table = body.get("payment_table", "")
     patient_mapping: dict = body.get("patient_mapping", {})
     visit_mapping: dict = body.get("visit_mapping", {})
+    appointment_mapping: dict = body.get("appointment_mapping", {})
+    medication_mapping: dict = body.get("medication_mapping", {})
+    payment_mapping: dict = body.get("payment_mapping", {})
     on_duplicate: str = body.get("on_duplicate", "skip")
     dry_run: bool = bool(body.get("dry_run", False))
 
     patient_rows = s["rows"].get(patient_table, [])
     visit_rows = s["rows"].get(visit_table, []) if visit_table else []
+    appointment_rows = s["rows"].get(appointment_table, []) if appointment_table else None
+    medication_rows = s["rows"].get(medication_table, []) if medication_table else None
+    payment_rows = s["rows"].get(payment_table, []) if payment_table else None
 
     backup_path_str = ""
     if not dry_run:
@@ -8897,6 +9644,11 @@ async def import_execute(body: dict = Body(...)):
             on_duplicate=on_duplicate, dry_run=dry_run,
             source_name=source_name, source_type=source_type,
             patient_table=patient_table, visit_table=visit_table,
+            appointment_rows=appointment_rows, appointment_mapping=appointment_mapping,
+            appointment_table=appointment_table,
+            medication_rows=medication_rows, medication_mapping=medication_mapping,
+            payment_rows=payment_rows, payment_mapping=payment_mapping,
+            payment_table=payment_table,
         )
         if not dry_run:
             with connect() as conn:
@@ -9130,6 +9882,590 @@ def save_specialty_data(patient_id: int, body: dict):
               updated_at=excluded.updated_at
         """, (patient_id, speciality, _json.dumps(data, ensure_ascii=False)))
         conn.commit()
+    return {"ok": True}
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# PRODUCTION FIX BLOCK — Doctors / Diagnostic / Patient sub-endpoints
+# Added per senior-engineer audit. All queries are safe (try/except on
+# optional columns) and never delete/reset existing data.
+# ═════════════════════════════════════════════════════════════════════════
+
+def _ensure_doctors_table() -> None:
+    with connect() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS doctors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            speciality TEXT DEFAULT '',
+            phone TEXT DEFAULT '',
+            email TEXT DEFAULT '',
+            address TEXT DEFAULT '',
+            order_number TEXT DEFAULT '',
+            is_active INTEGER NOT NULL DEFAULT 1,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        count = conn.execute("SELECT COUNT(*) AS c FROM doctors").fetchone()["c"]
+        if count == 0:
+            settings = {r["key"]: r["value"] for r in conn.execute(
+                "SELECT key, value FROM app_settings"
+            ).fetchall()}
+            name = (settings.get("DOCTOR_NAME") or "").strip()
+            if name:
+                conn.execute("""INSERT INTO doctors
+                   (name, speciality, phone, email, address, order_number, is_active, is_default)
+                   VALUES (?,?,?,?,?,?,1,1)""",
+                   (name,
+                    settings.get("DOCTOR_SPECIALTY", ""),
+                    settings.get("DOCTOR_PHONE", ""),
+                    settings.get("DOCTOR_EMAIL", ""),
+                    settings.get("DOCTOR_ADDRESS", ""),
+                    settings.get("DOCTOR_ORDER_NUMBER", "")))
+
+try:
+    _ensure_doctors_table()
+except Exception:
+    pass  # Will retry inside endpoints; safe on fresh/empty DB
+
+
+@app.get("/api/diagnostic/full-data")
+def diagnostic_full_data() -> dict[str, Any]:
+    """Production diagnostic: lists all tables, row counts, sample IDs, orphan FKs."""
+    expected = [
+        "patients", "visits", "documents", "prescriptions", "prescription_items",
+        "appointments", "medicines_db", "doctors", "visit_types", "bilans",
+        "prescription_templates", "document_templates", "users", "app_settings",
+        "old_record_links", "import_jobs",
+    ]
+    with connect() as conn:
+        existing = {r["name"] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()}
+        tables_info: dict[str, Any] = {}
+        for tbl in sorted(existing):
+            try:
+                count = conn.execute(f"SELECT COUNT(*) AS c FROM {tbl}").fetchone()["c"]
+                sample: list[Any] = []
+                try:
+                    cols = [c["name"] for c in conn.execute(f"PRAGMA table_info({tbl})").fetchall()]
+                    if "id" in cols and count:
+                        sample = [r["id"] for r in conn.execute(
+                            f"SELECT id FROM {tbl} ORDER BY id DESC LIMIT 5"
+                        ).fetchall()]
+                except Exception:
+                    pass
+                tables_info[tbl] = {"row_count": count, "sample_ids": sample}
+            except Exception as e:
+                tables_info[tbl] = {"row_count": -1, "error": str(e)}
+        orphans: dict[str, int] = {}
+        for name, sql in [
+            ("visits_no_patient",        "SELECT COUNT(*) AS c FROM visits v LEFT JOIN patients p ON p.id=v.patient_id WHERE p.id IS NULL"),
+            ("prescriptions_no_patient", "SELECT COUNT(*) AS c FROM prescriptions x LEFT JOIN patients p ON p.id=x.patient_id WHERE p.id IS NULL"),
+            ("appointments_no_patient",  "SELECT COUNT(*) AS c FROM appointments a LEFT JOIN patients p ON p.id=a.patient_id WHERE p.id IS NULL"),
+            ("documents_no_patient",     "SELECT COUNT(*) AS c FROM documents d LEFT JOIN patients p ON p.id=d.patient_id WHERE p.id IS NULL"),
+            ("rx_items_no_rx",           "SELECT COUNT(*) AS c FROM prescription_items pi LEFT JOIN prescriptions pr ON pr.id=pi.prescription_id WHERE pr.id IS NULL"),
+        ]:
+            try:
+                orphans[name] = conn.execute(sql).fetchone()["c"]
+            except Exception:
+                orphans[name] = -1
+        missing = [t for t in expected if t not in existing]
+    return {
+        "active_db_path": str(DB_PATH),
+        "tables": sorted(existing),
+        "row_counts": tables_info,
+        "missing_tables": missing,
+        "orphans": orphans,
+        "checked_at": now_iso(),
+    }
+
+
+@app.get("/api/doctors")
+def list_doctors(active_only: int = 0) -> dict[str, Any]:
+    where = "WHERE is_active=1" if active_only else ""
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            f"SELECT * FROM doctors {where} ORDER BY is_default DESC, name"
+        ).fetchall())
+    return {"rows": rows}
+
+
+@app.post("/api/doctors", status_code=201)
+def create_doctor(payload: dict) -> dict[str, Any]:
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Le nom du médecin est requis")
+    is_default = int(bool(payload.get("is_default", 0)))
+    with connect() as conn:
+        cur = conn.execute("""INSERT INTO doctors
+            (name, speciality, phone, email, address, order_number, is_active, is_default)
+            VALUES (?,?,?,?,?,?,?,?)""",
+            (name,
+             payload.get("speciality", ""), payload.get("phone", ""),
+             payload.get("email", ""),      payload.get("address", ""),
+             payload.get("order_number", ""),
+             int(bool(payload.get("is_active", 1))),
+             is_default))
+        if is_default:
+            conn.execute("UPDATE doctors SET is_default=0 WHERE id != ?", (cur.lastrowid,))
+    return {"id": cur.lastrowid}
+
+
+@app.put("/api/doctors/{doctor_id}")
+def update_doctor(doctor_id: int, payload: dict) -> dict[str, Any]:
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Le nom du médecin est requis")
+    is_default = int(bool(payload.get("is_default", 0)))
+    with connect() as conn:
+        cur = conn.execute("""UPDATE doctors SET name=?, speciality=?, phone=?, email=?,
+            address=?, order_number=?, is_active=?, is_default=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?""",
+            (name,
+             payload.get("speciality", ""), payload.get("phone", ""),
+             payload.get("email", ""),      payload.get("address", ""),
+             payload.get("order_number", ""),
+             int(bool(payload.get("is_active", 1))),
+             is_default, doctor_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Médecin introuvable")
+        if is_default:
+            conn.execute("UPDATE doctors SET is_default=0 WHERE id != ?", (doctor_id,))
+    return {"ok": True}
+
+
+@app.delete("/api/doctors/{doctor_id}")
+def deactivate_doctor(doctor_id: int) -> dict[str, Any]:
+    """Soft-delete: deactivates instead of removing to preserve historical FKs."""
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE doctors SET is_active=0, is_default=0, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (doctor_id,))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Médecin introuvable")
+    return {"ok": True}
+
+
+@app.get("/api/type-actes")
+def list_type_actes(active_only: int = 1) -> dict[str, Any]:
+    where = "WHERE active=1" if active_only else ""
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            f"SELECT id, name, price, active FROM visit_types {where} ORDER BY name"
+        ).fetchall())
+    return {"rows": rows}
+
+
+@app.get("/api/templates")
+def list_all_templates_combined() -> dict[str, Any]:
+    """Returns prescription templates and document templates in one payload."""
+    with connect() as conn:
+        prescriptions: list[Any] = []
+        documents: list[Any] = []
+        try:
+            prescriptions = rows_to_dicts(conn.execute(
+                "SELECT id, name, category, items_json, created_at FROM prescription_templates ORDER BY category, name"
+            ).fetchall())
+            for p in prescriptions:
+                try:
+                    p["items"] = json.loads(p.get("items_json") or "[]")
+                except Exception:
+                    p["items"] = []
+        except Exception:
+            pass
+        try:
+            documents = rows_to_dicts(conn.execute(
+                "SELECT * FROM document_templates ORDER BY name"
+            ).fetchall())
+        except Exception:
+            pass
+    return {"prescriptions": prescriptions, "documents": documents}
+
+
+@app.get("/api/patients/{patient_id}/full")
+def patient_full(patient_id: int) -> dict[str, Any]:
+    """Complete patient dossier: identity + antecedents + visits + ordonnances +
+    documents + appointments + bilans + last visit + cardio summary + stats."""
+    with connect() as conn:
+        patient = conn.execute("SELECT * FROM patients WHERE id=?", (patient_id,)).fetchone()
+        if not patient:
+            raise HTTPException(404, "Patient introuvable")
+        visits = rows_to_dicts(conn.execute(
+            "SELECT * FROM visits WHERE patient_id=? ORDER BY date_visite DESC", (patient_id,)
+        ).fetchall())
+        documents = rows_to_dicts(conn.execute(
+            "SELECT * FROM documents WHERE patient_id=? ORDER BY uploaded_at DESC", (patient_id,)
+        ).fetchall())
+        prescriptions = rows_to_dicts(conn.execute(
+            "SELECT * FROM prescriptions WHERE patient_id=? ORDER BY created_at DESC", (patient_id,)
+        ).fetchall())
+        appointments = rows_to_dicts(conn.execute(
+            "SELECT * FROM appointments WHERE patient_id=? ORDER BY scheduled_at DESC", (patient_id,)
+        ).fetchall())
+        bilans: list[Any] = []
+        try:
+            bilans = rows_to_dicts(conn.execute(
+                "SELECT * FROM bilans WHERE patient_id=? ORDER BY created_at DESC", (patient_id,)
+            ).fetchall())
+        except Exception:
+            pass
+        cardio = cardio_summary_for_patient(conn, patient_id)
+    last_visit = visits[0] if visits else None
+    return {
+        "patient": dict(patient),
+        "visits": visits,
+        "documents": documents,
+        "prescriptions": prescriptions,
+        "appointments": appointments,
+        "bilans": bilans,
+        "cardio": cardio,
+        "last_visit": last_visit,
+        "stats": {
+            "visits_count": len(visits),
+            "prescriptions_count": len(prescriptions),
+            "documents_count": len(documents),
+            "appointments_count": len(appointments),
+            "bilans_count": len(bilans),
+        },
+    }
+
+
+@app.get("/api/patients/{patient_id}/antecedents")
+def get_patient_antecedents(patient_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        row = conn.execute("""SELECT id, allergies, maladies, antecedents,
+            antecedents_chirurgicaux, antecedents_familiaux, antecedents_gyneco,
+            autres_antecedents, tabagisme, alcool, sport, notes_importantes
+            FROM patients WHERE id=?""", (patient_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Patient introuvable")
+    return dict(row)
+
+
+@app.put("/api/patients/{patient_id}/antecedents")
+def update_patient_antecedents(patient_id: int, payload: dict) -> dict[str, Any]:
+    fields = ["allergies", "maladies", "antecedents", "antecedents_chirurgicaux",
+              "antecedents_familiaux", "antecedents_gyneco", "autres_antecedents",
+              "tabagisme", "alcool", "sport", "notes_importantes"]
+    sets = ", ".join(f"{f}=?" for f in fields)
+    values = [payload.get(f, "") or "" for f in fields] + [patient_id]
+    with connect() as conn:
+        cur = conn.execute(
+            f"UPDATE patients SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE id=?", values)
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Patient introuvable")
+    return {"ok": True}
+
+
+@app.get("/api/patients/{patient_id}/payments")
+def get_patient_payments(patient_id: int) -> dict[str, Any]:
+    """All visits with payment info for règlement view."""
+    with connect() as conn:
+        if not conn.execute("SELECT id FROM patients WHERE id=?", (patient_id,)).fetchone():
+            raise HTTPException(404, "Patient introuvable")
+        raw_rows = rows_to_dicts(conn.execute(
+            """
+            SELECT
+                v.id,
+                v.date_visite,
+                v.motif,
+                v.visit_type,
+                COALESCE(v.visit_fee, 0) AS visit_fee,
+                COALESCE(v.fee_paid, 0) AS fee_paid,
+                COALESCE(NULLIF(v.payment_status, ''), 'pending') AS payment_status,
+                COALESCE(NULLIF(v.mode_paiement, ''), '') AS mode_paiement,
+                vt.id AS tarif_id,
+                vt.name AS tarif_name,
+                vt.price AS tarif_db
+            FROM visits v
+            LEFT JOIN visit_types vt
+              ON lower(trim(COALESCE(vt.name, ''))) = lower(trim(COALESCE(v.visit_type, '')))
+            WHERE v.patient_id = ?
+            ORDER BY v.date_visite DESC, v.id DESC
+            """,
+            (patient_id,),
+        ).fetchall())
+    rows: list[dict[str, Any]] = []
+    for row in raw_rows:
+        montant = float(row.get("visit_fee") or 0)
+        paid = float(row.get("fee_paid") or 0)
+        rows.append({
+            **row,
+            "type_consultation": row.get("visit_type") or "Consultation",
+            "type_acte": row.get("visit_type") or "Consultation",
+            "acte": row.get("motif") or row.get("visit_type") or "Consultation",
+            "montant": round(montant, 2),
+            "paye": round(paid, 2),
+            "reste": round(max(montant - paid, 0), 2),
+            "tarif_db": round(float(row.get("tarif_db") or 0), 2) if row.get("tarif_db") is not None else None,
+            "statut": row.get("payment_status") or "pending",
+        })
+    current_visit = rows[0] if rows else None
+    total_fee = sum(r["montant"] for r in rows)
+    total_paid = sum(r["paye"] for r in rows)
+    return {
+        "current_visit": current_visit,
+        "rows": rows,
+        "total_fee": round(total_fee, 2),
+        "total_paid": round(total_paid, 2),
+        "total_unpaid": round(max(total_fee - total_paid, 0), 2),
+    }
+
+
+@app.get("/api/patients/{patient_id}/historique")
+def get_patient_historique(patient_id: int) -> dict[str, Any]:
+    """Unified timeline: visits + prescriptions + documents + appointments."""
+    with connect() as conn:
+        if not conn.execute("SELECT id FROM patients WHERE id=?", (patient_id,)).fetchone():
+            raise HTTPException(404, "Patient introuvable")
+        events: list[dict[str, Any]] = []
+        for v in conn.execute(
+            "SELECT id, date_visite, motif, diagnostics FROM visits WHERE patient_id=?",
+            (patient_id,)).fetchall():
+            events.append({"type": "visit", "id": v["id"], "date": v["date_visite"],
+                           "title": v["motif"] or "Consultation",
+                           "summary": (v["diagnostics"] or "")[:200]})
+        for r in conn.execute(
+            "SELECT id, created_at, lines FROM prescriptions WHERE patient_id=?",
+            (patient_id,)).fetchall():
+            events.append({"type": "prescription", "id": r["id"], "date": r["created_at"],
+                           "title": "Ordonnance",
+                           "summary": (r["lines"] or "")[:140]})
+        try:
+            for d in conn.execute(
+                "SELECT id, uploaded_at, type_document, original_name FROM documents WHERE patient_id=?",
+                (patient_id,)).fetchall():
+                events.append({"type": "document", "id": d["id"], "date": d["uploaded_at"],
+                               "title": d["type_document"] or "Document",
+                               "summary": d["original_name"] or ""})
+        except Exception:
+            pass
+        try:
+            for a in conn.execute(
+                "SELECT id, scheduled_at, motif, status FROM appointments WHERE patient_id=?",
+                (patient_id,)).fetchall():
+                events.append({"type": "appointment", "id": a["id"], "date": a["scheduled_at"],
+                               "title": "Rendez-vous",
+                               "summary": " · ".join(filter(None, [a["motif"], a["status"]]))})
+        except Exception:
+            pass
+    events.sort(key=lambda e: (e.get("date") or ""), reverse=True)
+    return {"events": events, "total": len(events)}
+
+
+@app.post("/api/admin/fix-name-swap")
+def fix_name_swap(dry_run: int = 0) -> dict[str, Any]:
+    """Swap nom/prenom for patients where they appear reversed.
+
+    Heuristic: legacy import had columns swapped for some records. Detect rows
+    where `nom` is mostly lowercase/Titlecase AND `prenom` is mostly UPPERCASE,
+    then swap them. Returns the count of fixed patients.
+    """
+    fixed: list[dict[str, Any]] = []
+    with connect() as conn:
+        rows = conn.execute("SELECT id, nom, prenom FROM patients WHERE nom IS NOT NULL AND prenom IS NOT NULL").fetchall()
+        for r in rows:
+            nom = (r["nom"] or "").strip()
+            prenom = (r["prenom"] or "").strip()
+            if not nom or not prenom:
+                continue
+            # Heuristic: prenom appears to be the family name (all-uppercase, ≥3 chars)
+            # and nom appears to be the first name (not all-uppercase, has lowercase).
+            prenom_is_upper = prenom == prenom.upper() and len(prenom) >= 3 and any(c.isalpha() for c in prenom)
+            nom_has_lower = any(c.islower() for c in nom)
+            if prenom_is_upper and nom_has_lower:
+                new_nom = prenom.upper()
+                new_prenom = nom[:1].upper() + nom[1:].lower() if nom else nom
+                fixed.append({"id": r["id"], "old_nom": nom, "old_prenom": prenom, "new_nom": new_nom, "new_prenom": new_prenom})
+                if not dry_run:
+                    conn.execute("UPDATE patients SET nom=?, prenom=? WHERE id=?", (new_nom, new_prenom, r["id"]))
+        if not dry_run:
+            conn.commit()
+    return {"dry_run": bool(dry_run), "total_fixed": len(fixed), "sample": fixed[:20]}
+
+
+# =====================================================================
+# RÉFÉRENTIELS — DIAGNOSTICS CATALOG
+# =====================================================================
+
+@app.get("/api/diagnostics-catalog")
+def list_diagnostics_catalog(active_only: int = 0) -> dict[str, Any]:
+    where = "WHERE active=1" if active_only else ""
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            f"SELECT id, code, name, category, active, created_at FROM diagnostics_catalog {where} ORDER BY category, name"
+        ).fetchall())
+    return {"rows": rows}
+
+@app.post("/api/diagnostics-catalog", status_code=201)
+def create_diagnostic(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Nom requis")
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO diagnostics_catalog (code, name, category) VALUES (?, ?, ?)",
+            (payload.get("code", ""), name, payload.get("category", "Autre")),
+        )
+    return {"id": cur.lastrowid, "ok": True}
+
+@app.put("/api/diagnostics-catalog/{item_id}")
+def update_diagnostic(item_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE diagnostics_catalog SET code=?, name=?, category=?, active=? WHERE id=?",
+            (payload.get("code", ""), payload.get("name", ""), payload.get("category", "Autre"),
+             int(payload.get("active", 1)), item_id),
+        )
+    return {"ok": True}
+
+@app.delete("/api/diagnostics-catalog/{item_id}")
+def delete_diagnostic(item_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM diagnostics_catalog WHERE id=?", (item_id,))
+    return {"ok": True}
+
+
+# =====================================================================
+# RÉFÉRENTIELS — TARIFS
+# =====================================================================
+
+@app.get("/api/tarifs")
+def list_tarifs(active_only: int = 0) -> dict[str, Any]:
+    where = "WHERE active=1" if active_only else ""
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            f"SELECT id, label, amount, category, active, created_at FROM tarifs {where} ORDER BY category, label"
+        ).fetchall())
+    return {"rows": rows}
+
+@app.post("/api/tarifs", status_code=201)
+def create_tarif(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    label = (payload.get("label") or "").strip()
+    if not label:
+        raise HTTPException(400, "Libellé requis")
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO tarifs (label, amount, category) VALUES (?, ?, ?)",
+            (label, float(payload.get("amount", 0)), payload.get("category", "Consultation")),
+        )
+    return {"id": cur.lastrowid, "ok": True}
+
+@app.put("/api/tarifs/{item_id}")
+def update_tarif(item_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE tarifs SET label=?, amount=?, category=?, active=? WHERE id=?",
+            (payload.get("label", ""), float(payload.get("amount", 0)),
+             payload.get("category", "Consultation"), int(payload.get("active", 1)), item_id),
+        )
+    return {"ok": True}
+
+@app.delete("/api/tarifs/{item_id}")
+def delete_tarif(item_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM tarifs WHERE id=?", (item_id,))
+    return {"ok": True}
+
+
+# =====================================================================
+# RÉFÉRENTIELS — ACTES CATALOG
+# =====================================================================
+
+@app.get("/api/actes-catalog")
+def list_actes_catalog(active_only: int = 0) -> dict[str, Any]:
+    where = "WHERE active=1" if active_only else ""
+    with connect() as conn:
+        rows = rows_to_dicts(conn.execute(
+            f"SELECT id, code, name, price, category, active, created_at FROM actes_catalog {where} ORDER BY category, name"
+        ).fetchall())
+    return {"rows": rows}
+
+@app.post("/api/actes-catalog", status_code=201)
+def create_acte(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Nom requis")
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO actes_catalog (code, name, price, category) VALUES (?, ?, ?, ?)",
+            (payload.get("code", ""), name, float(payload.get("price", 0)), payload.get("category", "Autre")),
+        )
+    return {"id": cur.lastrowid, "ok": True}
+
+@app.put("/api/actes-catalog/{item_id}")
+def update_acte(item_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE actes_catalog SET code=?, name=?, price=?, category=?, active=? WHERE id=?",
+            (payload.get("code", ""), payload.get("name", ""), float(payload.get("price", 0)),
+             payload.get("category", "Autre"), int(payload.get("active", 1)), item_id),
+        )
+    return {"ok": True}
+
+@app.delete("/api/actes-catalog/{item_id}")
+def delete_acte(item_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM actes_catalog WHERE id=?", (item_id,))
+    return {"ok": True}
+
+
+# =====================================================================
+# RÉFÉRENTIELS — BILAN CATALOG (update + delete — list/create already exist)
+# =====================================================================
+
+@app.put("/api/bilan-catalog/{item_id}")
+def update_bilan_catalog_item(item_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE bilan_catalog SET name=?, category=?, active=? WHERE id=?",
+            (payload.get("name", ""), payload.get("category", "Autre"),
+             int(payload.get("active", 1)), item_id),
+        )
+    return {"ok": True}
+
+@app.delete("/api/bilan-catalog/{item_id}")
+def delete_bilan_catalog_item(item_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM bilan_catalog WHERE id=?", (item_id,))
+    return {"ok": True}
+
+
+# =====================================================================
+# RÉFÉRENTIELS — VISIT TYPES (delete — list/create/update already exist)
+# =====================================================================
+
+@app.delete("/api/visit-types/{vt_id}")
+def delete_visit_type(vt_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM visit_types WHERE id=?", (vt_id,))
+    return {"ok": True}
+
+
+# =====================================================================
+# RÉFÉRENTIELS — MEDICINES (update + delete for medicines_db)
+# =====================================================================
+
+@app.put("/api/medicines/{med_id}")
+def update_medicine(med_id: int, payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute(
+            """UPDATE medicines_db SET brand_name=?, dci=?, dosage_strength=?, form=?,
+               route=?, laboratory=?, indications=?, last_updated=CURRENT_TIMESTAMP WHERE id=?""",
+            (payload.get("brand_name", ""), payload.get("dci", ""),
+             payload.get("dosage_strength", ""), payload.get("form", ""),
+             payload.get("route", ""), payload.get("laboratory", ""),
+             payload.get("indications", ""), med_id),
+        )
+        rebuild_medicines_fts(conn)
+    return {"ok": True}
+
+@app.delete("/api/medicines/{med_id}")
+def delete_medicine(med_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        conn.execute("DELETE FROM medicines_db WHERE id=?", (med_id,))
+        rebuild_medicines_fts(conn)
     return {"ok": True}
 
 

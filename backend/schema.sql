@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS lab_results (
   total_cholesterol REAL,
   ldl REAL,
   hdl REAL,
+  glucose REAL,
+  hba1c REAL,
   triglycerides REAL,
   troponin REAL,
   bnp REAL,

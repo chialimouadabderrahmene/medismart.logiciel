@@ -285,6 +285,149 @@ def import_visits(conn: sqlite3.Connection, rows: list[dict],
     return {"imported": imported, "skipped": skipped, "updated": updated, "errors": errors}
 
 
+# ── Appointment import ────────────────────────────────────────────────────────
+
+def import_appointments(conn: sqlite3.Connection, rows: list[dict],
+                        mapping: dict, job_id: int,
+                        patient_id_map: dict[str, int],
+                        dry_run: bool = False,
+                        source_name: str = "",
+                        source_type: str = "file",
+                        old_table: str = "") -> dict:
+    imported = 0; skipped = 0; errors = []
+    for i, row in enumerate(rows):
+        try:
+            appt = _apply_mapping(row, mapping)
+            code = _str(appt.get("patient_code"))
+            patient_id = patient_id_map.get(code)
+            if not patient_id and code:
+                r = conn.execute("SELECT id FROM patients WHERE code=? LIMIT 1", (code,)).fetchone()
+                if r: patient_id = r[0]
+            if not patient_id:
+                skipped += 1; continue
+            scheduled = _str(appt.get("scheduled_at")) or now_iso()
+            title = _str(appt.get("title")) or "Consultation"
+            status = _str(appt.get("status")) or "scheduled"
+            notes = _str(appt.get("notes")) or None
+            old_id = _str(row.get("id") or f"arow_{i}")
+            checksum = compute_checksum(appt, ["patient_code", "scheduled_at", "title"])
+            link = _find_link(conn, source_name, old_table, old_id) if source_name else None
+            if link and link["checksum"] == checksum:
+                skipped += 1; continue
+            if not dry_run:
+                r = conn.execute(
+                    "SELECT id FROM appointments WHERE patient_id=? AND scheduled_at=? LIMIT 1",
+                    (patient_id, scheduled),
+                ).fetchone()
+                if r:
+                    skipped += 1
+                    if source_name: _upsert_link(conn, source_name, source_type, old_table, old_id, "appointments", r[0], checksum)
+                    continue
+                cur = conn.execute(
+                    "INSERT INTO appointments (patient_id,scheduled_at,title,status,notes,created_at) VALUES (?,?,?,?,?,?)",
+                    (patient_id, scheduled, title, status, notes, now_iso()),
+                )
+                if source_name: _upsert_link(conn, source_name, source_type, old_table, old_id, "appointments", cur.lastrowid, checksum)
+                conn.execute("INSERT INTO import_logs (job_id,entity,action,details,created_at) VALUES (?,?,?,?,?)",
+                             (job_id, "appointment", "insert", json.dumps({"patient_id": patient_id, "scheduled_at": scheduled}), now_iso()))
+            imported += 1
+        except Exception as e:
+            errors.append({"row": i, "error": str(e)})
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+# ── Medication import ─────────────────────────────────────────────────────────
+
+def import_medications(conn: sqlite3.Connection, rows: list[dict],
+                       mapping: dict, job_id: int,
+                       dry_run: bool = False) -> dict:
+    imported = 0; skipped = 0; errors = []
+    for i, row in enumerate(rows):
+        try:
+            med = _apply_mapping(row, mapping)
+            brand = _str(med.get("brand_name"))
+            if not brand:
+                skipped += 1; continue
+            dci = _str(med.get("dci")) or None
+            dosage = _str(med.get("dosage_strength")) or None
+            form = _str(med.get("form")) or None
+            category = _str(med.get("category")) or None
+            route = _str(med.get("route")) or None
+            if not dry_run:
+                r = conn.execute(
+                    "SELECT id FROM medicines_db WHERE lower(brand_name)=? LIMIT 1",
+                    (brand.lower(),),
+                ).fetchone()
+                if r:
+                    skipped += 1; continue
+                conn.execute(
+                    "INSERT INTO medicines_db (brand_name,dci,dosage_strength,form,route,category,created_at) VALUES (?,?,?,?,?,?,?)",
+                    (brand, dci, dosage, form, route, category, now_iso()),
+                )
+                conn.execute("INSERT INTO import_logs (job_id,entity,action,details,created_at) VALUES (?,?,?,?,?)",
+                             (job_id, "medication", "insert", json.dumps({"brand_name": brand}), now_iso()))
+            imported += 1
+        except Exception as e:
+            errors.append({"row": i, "error": str(e)})
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+# ── Payment import ────────────────────────────────────────────────────────────
+
+def import_payments(conn: sqlite3.Connection, rows: list[dict],
+                    mapping: dict, job_id: int,
+                    patient_id_map: dict[str, int],
+                    dry_run: bool = False,
+                    source_name: str = "",
+                    source_type: str = "file",
+                    old_table: str = "") -> dict:
+    imported = 0; skipped = 0; errors = []
+    for i, row in enumerate(rows):
+        try:
+            pay = _apply_mapping(row, mapping)
+            code = _str(pay.get("patient_code"))
+            patient_id = patient_id_map.get(code)
+            if not patient_id and code:
+                r = conn.execute("SELECT id FROM patients WHERE code=? LIMIT 1", (code,)).fetchone()
+                if r: patient_id = r[0]
+            if not patient_id:
+                skipped += 1; continue
+            try: montant = float(pay.get("montant") or 0)
+            except (TypeError, ValueError): montant = 0.0
+            try: paye = float(pay.get("paye") or 0)
+            except (TypeError, ValueError): paye = 0.0
+            mode = _str(pay.get("mode_paiement")) or None
+            date_pay = _str(pay.get("date_paiement")) or now_iso()[:10]
+            old_id = _str(row.get("id") or f"prow_{i}")
+            checksum = compute_checksum(pay, ["patient_code", "date_paiement", "montant"])
+            link = _find_link(conn, source_name, old_table, old_id) if source_name else None
+            if link and link["checksum"] == checksum:
+                skipped += 1; continue
+            if not dry_run:
+                r = conn.execute(
+                    "SELECT id FROM visits WHERE patient_id=? AND date_visite=? LIMIT 1",
+                    (patient_id, date_pay),
+                ).fetchone()
+                if r:
+                    conn.execute(
+                        "UPDATE visits SET visit_fee=?, fee_paid=?, mode_paiement=? WHERE id=?",
+                        (montant, paye, mode, r[0]),
+                    )
+                    if source_name: _upsert_link(conn, source_name, source_type, old_table, old_id, "visits", r[0], checksum)
+                else:
+                    cur = conn.execute(
+                        "INSERT INTO visits (patient_id,date_visite,visit_fee,fee_paid,mode_paiement,created_at) VALUES (?,?,?,?,?,?)",
+                        (patient_id, date_pay, montant, paye, mode, now_iso()),
+                    )
+                    if source_name: _upsert_link(conn, source_name, source_type, old_table, old_id, "visits", cur.lastrowid, checksum)
+                conn.execute("INSERT INTO import_logs (job_id,entity,action,details,created_at) VALUES (?,?,?,?,?)",
+                             (job_id, "payment", "insert", json.dumps({"patient_id": patient_id, "montant": montant}), now_iso()))
+            imported += 1
+        except Exception as e:
+            errors.append({"row": i, "error": str(e)})
+    return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
 def _apply_mapping(row: dict, mapping: dict) -> dict:
     result = {}
     for ms_field, src_col in mapping.items():
@@ -360,7 +503,12 @@ class ImportEngine:
                 visit_rows: list[dict], visit_mapping: dict,
                 on_duplicate: str = "skip", dry_run: bool = False,
                 source_name: str = "", source_type: str = "file",
-                patient_table: str = "", visit_table: str = "") -> dict:
+                patient_table: str = "", visit_table: str = "",
+                appointment_rows: list[dict] | None = None, appointment_mapping: dict | None = None,
+                appointment_table: str = "",
+                medication_rows: list[dict] | None = None, medication_mapping: dict | None = None,
+                payment_rows: list[dict] | None = None, payment_mapping: dict | None = None,
+                payment_table: str = "") -> dict:
         conn = self._connect()
         try:
             p_result = import_patients(
@@ -372,19 +520,38 @@ class ImportEngine:
                 p_result["patient_id_map"], dry_run,
                 source_name, source_type, visit_table,
             )
+            a_result = import_appointments(
+                conn, appointment_rows or [], appointment_mapping or {}, job_id,
+                p_result["patient_id_map"], dry_run,
+                source_name, source_type, appointment_table,
+            ) if appointment_rows else {"imported": 0, "skipped": 0, "errors": []}
+            m_result = import_medications(
+                conn, medication_rows or [], medication_mapping or {}, job_id, dry_run,
+            ) if medication_rows else {"imported": 0, "skipped": 0, "errors": []}
+            pay_result = import_payments(
+                conn, payment_rows or [], payment_mapping or {}, job_id,
+                p_result["patient_id_map"], dry_run,
+                source_name, source_type, payment_table,
+            ) if payment_rows else {"imported": 0, "skipped": 0, "errors": []}
+            all_errors = (p_result["errors"] + v_result["errors"] +
+                          a_result["errors"] + m_result["errors"] + pay_result["errors"])
             if not dry_run:
                 conn.execute(
                     "UPDATE import_jobs SET status=?,patients_imported=?,visits_imported=?,errors=?,finished_at=? WHERE id=?",
                     ("done", p_result["imported"], v_result["imported"],
-                     json.dumps(p_result["errors"] + v_result["errors"]), now_iso(), job_id),
+                     json.dumps(all_errors), now_iso(), job_id),
                 )
                 conn.commit()
             return {
                 "dry_run": dry_run,
-                "patients": p_result,
-                "visits":   v_result,
-                "total_imported": p_result["imported"] + v_result["imported"],
-                "total_errors":   len(p_result["errors"]) + len(v_result["errors"]),
+                "patients":     p_result,
+                "visits":       v_result,
+                "appointments": a_result,
+                "medications":  m_result,
+                "payments":     pay_result,
+                "total_imported": (p_result["imported"] + v_result["imported"] +
+                                   a_result["imported"] + m_result["imported"] + pay_result["imported"]),
+                "total_errors": len(all_errors),
             }
         except Exception:
             conn.rollback()

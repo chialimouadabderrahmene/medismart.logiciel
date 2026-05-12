@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import anime from "animejs/lib/anime.es.js";
 import {
   Activity,
@@ -14,6 +14,7 @@ import {
   FileText,
   FlaskConical,
   Heart,
+  HelpCircle,
   Keyboard,
   LayoutDashboard,
   LogIn,
@@ -26,6 +27,7 @@ import {
   Scan,
   Search,
   Settings,
+  SlidersHorizontal,
   ShieldCheck,
   Stethoscope,
   Trash2,
@@ -80,12 +82,26 @@ import {
   Edit3,
   Loader2,
   PlusCircle,
-  Hash
+  Hash,
+  FolderOpen,
+  Table2,
+  Image,
+  Type,
+  Strikethrough,
+  Minus,
+  Columns,
+  Database,
+  Layers,
+  ChevronDown,
 } from "lucide-react";
 import { api, apiBase } from "./api.js";
 import ImportWizardPanel from "./ImportWizardPanel.jsx";
 import SetupWizardPanel from "./SetupWizardPanel.jsx";
 import SpecialityFieldsPanel from "./SpecialityFieldsPanel.jsx";
+import PatientWorkstation from "./PatientWorkstation.jsx";
+import DoctorsPage from "./DoctorsPage.jsx";
+import DiagnosticPage from "./DiagnosticPage.jsx";
+import { PatientsListPage, TodayPatientsPage, AppointmentsPageV2 } from "./PatientNavPages.jsx";
 import { getSpecialityConfig, buildTabList, SPECIALITY_LIST } from "./specialities/index.js";
 import { cloudAi, getCloudConfig, saveCloudConfig, isCloudConfigured } from "./cloudAi.js";
 
@@ -107,7 +123,15 @@ const blankPatient = {
   allergies: "",
   maladies: "",
   notes_importantes: "",
-  antecedents: ""
+  antecedents: "",
+  cin: "",
+  tabagisme: "",
+  antecedents_chirurgicaux: "",
+  antecedents_familiaux: "",
+  antecedents_gyneco: "",
+  autres_antecedents: "",
+  alcool: "",
+  sport: ""
 };
 
 const blankVisit = {
@@ -125,7 +149,8 @@ const blankVisit = {
   visit_fee: 0,
   fee_paid: 0,
   payment_status: "pending",
-  visit_type: ""
+  visit_type: "",
+  mode_paiement: ""
 };
 
 const blankAppointment = {
@@ -164,8 +189,9 @@ const sidebarSections = [
     label: "Général",
     items: [
       { id: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-      { id: "patients", label: "Annuaire Patients", icon: Users },
-      { id: "appointments-page", label: "Planning & RDV", icon: CalendarDays },
+      { id: "patients-list", label: "Liste des Patients", icon: Users },
+      { id: "patients-today", label: "Patients vus aujourd'hui", icon: Stethoscope },
+      { id: "appointments-page", label: "Rendez-vous", icon: CalendarDays },
     ],
   },
   {
@@ -190,8 +216,27 @@ function fieldValue(value) {
   return value ?? "";
 }
 
+// Auto-detect inverted nom/prenom from legacy import.
+// Heuristic: if prenom is ALL-UPPERCASE (≥3 chars) and nom has lowercase letters,
+// the columns are swapped — return the corrected pair for display.
+function correctName(rawNom, rawPrenom) {
+  const nom = (rawNom || "").trim();
+  const prenom = (rawPrenom || "").trim();
+  if (!nom || !prenom) return { nom: nom.toUpperCase(), prenom };
+  const prenomLooksLikeFamily = prenom.length >= 3 && prenom === prenom.toUpperCase() && /[A-ZÀ-ÿ]/.test(prenom);
+  const nomLooksLikeFirst = /[a-zà-ÿ]/.test(nom);
+  if (prenomLooksLikeFamily && nomLooksLikeFirst) {
+    return { nom: prenom.toUpperCase(), prenom: nom.charAt(0).toUpperCase() + nom.slice(1).toLowerCase() };
+  }
+  return { nom: nom.toUpperCase(), prenom };
+}
+
 function fullname(patient) {
-  return [patient?.nom, patient?.prenom].filter(Boolean).join(" ") || "Nouveau patient";
+  if (!patient) return "Nouveau patient";
+  // DB has nom=first_name, prenom=last_name (swapped from legacy import)
+  const nom = (patient.prenom || "").trim().toUpperCase();
+  const prenom = (patient.nom || "").trim();
+  return [nom, prenom].filter(Boolean).join(" ") || "Nouveau patient";
 }
 
 function displayValue(value, fallback = "Non renseigne") {
@@ -200,8 +245,9 @@ function displayValue(value, fallback = "Non renseigne") {
 }
 
 function patientInitials(patient) {
-  const first = String(patient?.nom || patient?.prenom || "?").trim().slice(0, 1);
-  const second = String(patient?.prenom || "").trim().slice(0, 1);
+  // DB swapped: prenom=family name, nom=first name
+  const first = String(patient?.prenom || patient?.nom || "?").trim().slice(0, 1);
+  const second = String(patient?.nom || "").trim().slice(0, 1);
   return `${first}${second}`.toUpperCase();
 }
 
@@ -380,6 +426,75 @@ function getAnalysisValues(analysis) {
   }));
 }
 
+const trackedClinicalOrder = ["ldl", "hdl", "hba1c", "glycemie", "tas", "tad", "fc"];
+const trackedClinicalLabels = {
+  ldl: "LDL",
+  hdl: "HDL",
+  hba1c: "HbA1c",
+  glycemie: "Glycemie",
+  tas: "TAS",
+  tad: "TAD",
+  fc: "FC"
+};
+
+function normalizeClinicalAnalyte(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/-/g, " ")
+    .replace(/[^a-z0-9/% ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractTrackedClinicalValues(values) {
+  const found = new Map();
+  (values || []).forEach((item) => {
+    const analyte = normalizeClinicalAnalyte(item?.analyte);
+    const rawValue = String(item?.value || "").trim();
+    if (!rawValue) return;
+    if (["ta", "tension", "tension arterielle", "blood pressure"].includes(analyte)) {
+      const match = rawValue.match(/(\d{2,3})\s*[/\-]\s*(\d{2,3})/);
+      if (match) {
+        found.set("tas", { key: "tas", label: "TAS", value: match[1], unit: "mmHg", source: item.analyte || "TA" });
+        found.set("tad", { key: "tad", label: "TAD", value: match[2], unit: "mmHg", source: item.analyte || "TA" });
+      }
+      return;
+    }
+    const aliases = {
+      ldl: "ldl",
+      hdl: "hdl",
+      hba1c: "hba1c",
+      "hb a1c": "hba1c",
+      "hemoglobine glyquee": "hba1c",
+      glucose: "glycemie",
+      glycemie: "glycemie",
+      "glycemie a jeun": "glycemie",
+      tas: "tas",
+      pas: "tas",
+      sbp: "tas",
+      tad: "tad",
+      pad: "tad",
+      dbp: "tad",
+      fc: "fc",
+      hr: "fc",
+      "frequence cardiaque": "fc",
+      pouls: "fc"
+    };
+    const key = aliases[analyte];
+    if (!key) return;
+    found.set(key, {
+      key,
+      label: trackedClinicalLabels[key],
+      value: rawValue,
+      unit: String(item?.unit || "").trim(),
+      source: item?.analyte || trackedClinicalLabels[key]
+    });
+  });
+  return trackedClinicalOrder.map((key) => found.get(key)).filter(Boolean);
+}
+
 function riskLevelClass(level) {
   const normalized = String(level || "").toLowerCase().replace("é", "e");
   if (normalized.includes("eleve") || normalized.includes("high")) return "ai-risk--high";
@@ -438,7 +553,6 @@ function LoginGate({ onLogin }) {
       setError(loginError.message);
     }
   }
-
   return (
     <main className="login-screen">
       <form className="login-panel" onSubmit={submit}>
@@ -512,7 +626,7 @@ function PatientList({ patients, selectedId, onSelect }) {
           <GenderIcon patient={patient} size={18} />
         </div>
         <div className="patient-row-info">
-          <strong>{patient.nom} {patient.prenom}</strong>
+          <strong>{patient.prenom} {patient.nom}</strong>
           <span>{patient.code || patient.id} • {patient.age || "?"} ans</span>
         </div>
         {patient.telephone && (
@@ -845,201 +959,330 @@ function DashboardEmptyV2({ icon: Icon, title, action, onAction }) {
   );
 }
 
+// ─── AnalyticsHub: parent with internal tabs (Vue d'ensemble / Finance) ───
+function AnalyticsHub({ dashboard, onNav }) {
+  const [tab, setTab] = useState("overview");
+  const [fixMsg, setFixMsg] = useState("");
+  const [fixing, setFixing] = useState(false);
+
+  async function runFixNameSwap() {
+    if (!window.confirm("Détecter et corriger les patients dont Nom/Prénom sont inversés ?")) return;
+    setFixing(true);
+    setFixMsg("");
+    try {
+      const r = await fetch("/api/admin/fix-name-swap", { method: "POST" });
+      const data = await r.json();
+      setFixMsg(`✓ ${data.total_fixed} patient(s) corrigé(s).`);
+    } catch (e) {
+      setFixMsg("Erreur : " + e.message);
+    } finally {
+      setFixing(false);
+      setTimeout(() => setFixMsg(""), 6000);
+    }
+  }
+
+  const tabs = [
+    { id: "overview", label: "VUE D'ENSEMBLE", sub: "KPIs & activité du cabinet", icon: BarChart3 },
+    { id: "finance",  label: "FINANCE DÉTAILLÉE", sub: "Recettes, impayés, encaissements", icon: DollarSign },
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#f1f5f9" }}>
+      {/* Inner tab bar */}
+      <div style={{ display: "flex", alignItems: "stretch", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0, paddingLeft: 18 }}>
+        {tabs.map(({ id, label, sub, icon: Icon }) => {
+          const active = tab === id;
+          return (
+            <button key={id} onClick={() => setTab(id)}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 22px", border: "none", background: "transparent", borderBottom: `3px solid ${active ? "#2563eb" : "transparent"}`, color: active ? "#1e40af" : "#64748b", cursor: "pointer", fontFamily: "inherit" }}>
+              <Icon size={16} />
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: ".4px" }}>{label}</div>
+                <div style={{ fontSize: 9.5, opacity: .65, marginTop: 1 }}>{sub}</div>
+              </div>
+            </button>
+          );
+        })}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, padding: "0 18px" }}>
+          {fixMsg && <span style={{ fontSize: 11.5, fontWeight: 600, color: fixMsg.startsWith("✓") ? "#059669" : "#dc2626" }}>{fixMsg}</span>}
+          <button onClick={runFixNameSwap} disabled={fixing}
+            title="Corriger les patients dont Nom et Prénom ont été inversés à l'import"
+            style={{ padding: "6px 12px", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: fixing ? 0.6 : 1 }}>
+            {fixing ? "Correction…" : "⇄ Corriger Nom/Prénom inversés"}
+          </button>
+        </div>
+      </div>
+      {/* Tab content */}
+      <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
+        {tab === "overview" && <DashboardPageV2 dashboard={dashboard} onNav={onNav} />}
+        {tab === "finance"  && <FinancePage />}
+      </div>
+    </div>
+  );
+}
+
 function DashboardPageV2({ dashboard, onNav }) {
   const counts = dashboard?.counts || {};
   const stats = dashboard?.cardio_stats || {};
   const appointments = dashboard?.appointments_today || [];
   const alerts = dashboard?.alerts || [];
   const latest = dashboard?.latest || [];
-  const toNumber = (value) => Number(value || 0);
+  const finance = dashboard?.finance || {};
+  const recentImports = dashboard?.recent_imports || [];
+  const aiToday = dashboard?.ai_today || {};
+  const n = (v) => Number(v || 0);
+  const fmtMoney = (v) => `${(v || 0).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} DA`;
+  const fmtShort = (v) => {
+    const x = Number(v || 0);
+    if (x >= 1_000_000) return (x / 1_000_000).toFixed(1).replace(".0", "") + "M";
+    if (x >= 1_000)     return (x / 1_000).toFixed(1).replace(".0", "") + "k";
+    return String(x);
+  };
 
   const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonsoir";
   const dateStr = now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const timeStr = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
-  const kpis = [
-    { icon: Users, label: "Patients", value: toNumber(counts.patients), detail: "Dossiers", tone: "blue" },
-    { icon: Stethoscope, label: "Consultations", value: toNumber(counts.visits), detail: "Visites saisies", tone: "teal" },
-    { icon: CalendarDays, label: "RDV", value: toNumber(counts.appointments), detail: `${appointments.length} aujourd'hui`, tone: "indigo" },
-    { icon: FileText, label: "Documents", value: toNumber(counts.documents), detail: "Pieces patients", tone: "sky" },
-    { icon: FlaskConical, label: "Labos", value: toNumber(counts.labs), detail: "Bilans", tone: "amber" },
-    { icon: Pill, label: "Ordonnances", value: toNumber(counts.prescriptions), detail: "Prescriptions", tone: "rose" },
+  // Main KPI cards (4 big)
+  const heroKpis = [
+    { icon: Users,        label: "Patients",       value: fmtShort(counts.patients),         detail: `${n(counts.visits)} consultations totales`, color: "#2563eb", bg: "#eff6ff", trend: n(finance.visits_today), trendLabel: "aujourd'hui" },
+    { icon: DollarSign,   label: "Recette du jour",value: fmtMoney(finance.revenue_today),  detail: `Mois: ${fmtMoney(finance.revenue_month)}`, color: "#059669", bg: "#ecfdf5", trend: n(finance.visits_today), trendLabel: "encaissements" },
+    { icon: Stethoscope,  label: "Consultations",  value: n(finance.visits_today),           detail: `${n(finance.appointments_today)} RDV planifiés`, color: "#7c3aed", bg: "#f5f3ff", trend: n(counts.prescriptions), trendLabel: "ordonnances" },
+    { icon: WalletCards,  label: "Impayés",        value: fmtMoney(finance.unpaid_total),   detail: "Reste à percevoir", color: finance.unpaid_total > 0 ? "#dc2626" : "#64748b", bg: finance.unpaid_total > 0 ? "#fef2f2" : "#f8fafc", trend: null, trendLabel: "" },
   ];
 
-  const cardioStats = [
-    { label: "HTA", value: toNumber(stats.hta), detail: "Hypertension" },
-    { label: "Diabete", value: toNumber(stats.diabete), detail: "Profil cardio" },
-    { label: "Coronarien", value: toNumber(stats.cad), detail: "Diagnostics" },
-    { label: "Insuf. card.", value: toNumber(stats.hf), detail: "Diagnostics" },
-    { label: "ACFA / rythme", value: toNumber(stats.acfa), detail: "Dossiers" },
-    { label: "ECG anormal", value: toNumber(stats.abnormal_ecg), detail: "A revoir" },
-    { label: "Haut risque", value: toNumber(stats.high_risk), detail: "Antecedents" },
-    { label: "Urgences jour", value: toNumber(stats.urgent_today), detail: "Planning" },
+  // Secondary stats strip
+  const mini = [
+    { icon: UserRound,   label: "Médecins actifs", value: n(counts.doctors),       color: "#0284c7" },
+    { icon: Pill,        label: "Ordonnances",     value: n(counts.prescriptions), color: "#db2777" },
+    { icon: FileText,    label: "Documents",       value: n(counts.documents),     color: "#ea580c" },
+    { icon: FlaskConical,label: "Examens labo",    value: n(counts.labs),          color: "#ca8a04" },
+    { icon: BookOpen,    label: "Médicaments",     value: fmtShort(counts.medications), color: "#9333ea" },
+    { icon: Bot,         label: "Requêtes AI",     value: n(aiToday.requests),     color: "#0891b2" },
   ];
-  const maxBar = Math.max(...cardioStats.map((item) => item.value), 1);
-  const cardioTotal = cardioStats.reduce((sum, item) => sum + item.value, 0);
+
+  const cardioBars = [
+    { label: "HTA",          value: n(stats.hta),          color: "#dc2626" },
+    { label: "Diabète",      value: n(stats.diabete),      color: "#d97706" },
+    { label: "Coronarien",   value: n(stats.cad),          color: "#7c3aed" },
+    { label: "Insuf. card.", value: n(stats.hf),           color: "#0891b2" },
+    { label: "ACFA",         value: n(stats.acfa),         color: "#059669" },
+    { label: "Haut risque",  value: n(stats.high_risk),    color: "#be123c" },
+  ];
+  const maxBar = Math.max(...cardioBars.map((b) => b.value), 1);
 
   const attentionItems = alerts.map((item) => {
     const message = item.notes_importantes || item.allergies || item.maladies || "Alerte dossier patient";
     const level = item.notes_importantes ? "danger" : "warning";
-    return {
-      ...item,
-      level,
-      title: fullname(item),
-      message,
-      meta: item.code || `ID ${item.id}`,
-    };
+    return { ...item, level, title: fullname(item), message, meta: item.code || `ID ${item.id}` };
   });
 
-  const quickActions = [
-    { icon: Plus, label: "Nouveau patient", target: "patients", tone: "blue" },
-    { icon: CalendarDays, label: "Planning RDV", target: "appointments-page", tone: "teal" },
-    { icon: BookOpen, label: "Medicaments", target: "medicines-nav", tone: "indigo" },
-    { icon: DollarSign, label: "Finance", target: "finance-page", tone: "amber" },
-  ];
+  // ─── Modern dashboard styles (scoped, no external CSS) ─────────────
+  const S = {
+    wrap:    { padding: 20, height: "100%", overflow: "auto", background: "#f1f5f9", display: "flex", flexDirection: "column", gap: 16 },
+    hero:    { background: "linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 50%, #2563eb 100%)", borderRadius: 16, padding: "22px 28px", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 8px 24px rgba(29,78,216,.25)", flexWrap: "wrap", gap: 14 },
+    heroL:   { display: "flex", flexDirection: "column", gap: 4 },
+    heroEye: { fontSize: 11, fontWeight: 700, letterSpacing: ".8px", textTransform: "uppercase", opacity: .75 },
+    heroH:   { margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: "-.02em" },
+    heroSub: { margin: 0, fontSize: 13.5, opacity: .9, textTransform: "capitalize" },
+    heroR:   { display: "flex", gap: 8, alignItems: "center" },
+    heroBtn: { display: "inline-flex", alignItems: "center", gap: 7, padding: "9px 16px", background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.25)", borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: "pointer", backdropFilter: "blur(6px)" },
+    kpiGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 14 },
+    kpi:     (c, bg) => ({ background: "#fff", borderRadius: 14, padding: 18, boxShadow: "0 1px 3px rgba(15,23,42,.06)", border: "1px solid #e2e8f0", borderLeft: `4px solid ${c}`, display: "flex", flexDirection: "column", gap: 10, transition: "transform .15s, box-shadow .15s", cursor: "default" }),
+    kpiHd:   { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
+    kpiLbl:  { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".5px" },
+    kpiIc:   (c, bg) => ({ width: 36, height: 36, borderRadius: 10, background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }),
+    kpiVal:  (c) => ({ fontSize: 28, fontWeight: 800, color: c, letterSpacing: "-.02em", lineHeight: 1 }),
+    kpiDet:  { fontSize: 11.5, color: "#94a3b8", marginTop: 2 },
+    kpiTrend:(c) => ({ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: c, background: `${c}14`, padding: "2px 7px", borderRadius: 999, marginTop: 6 }),
+    miniRow: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 },
+    mini:    (c) => ({ background: "#fff", borderRadius: 10, padding: "12px 14px", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 1px 2px rgba(15,23,42,.04)" }),
+    miniIc:  (c) => ({ width: 32, height: 32, borderRadius: 8, background: `${c}15`, color: c, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }),
+    miniL:   { fontSize: 10.5, color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".3px" },
+    miniV:   { fontSize: 17, fontWeight: 800, color: "#0f172a" },
+    grid2:   { display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14 },
+    card:    { background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(15,23,42,.05)", display: "flex", flexDirection: "column", overflow: "hidden" },
+    cardHd:  { padding: "14px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between" },
+    cardT:   { margin: 0, fontSize: 14.5, fontWeight: 700, color: "#0f172a", display: "flex", alignItems: "center", gap: 8 },
+    cardSub: { fontSize: 11, color: "#94a3b8", fontWeight: 500 },
+    link:    { fontSize: 12, fontWeight: 700, color: "#2563eb", background: "none", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 },
+    cardBd:  { padding: "12px 18px", flex: 1, overflow: "auto", maxHeight: 340 },
+    apptRow: (urgent) => ({ display: "grid", gridTemplateColumns: "60px 1fr auto", gap: 12, alignItems: "center", padding: "11px 0", borderBottom: "1px solid #f1f5f9" }),
+    apptTime:(urgent) => ({ fontSize: 13, fontWeight: 800, color: urgent ? "#dc2626" : "#1e40af", background: urgent ? "#fef2f2" : "#eff6ff", padding: "5px 9px", borderRadius: 7, textAlign: "center" }),
+    apptN:   { fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 1 },
+    apptM:   { fontSize: 11.5, color: "#64748b" },
+    apptTag: (urgent) => ({ fontSize: 10, fontWeight: 700, color: urgent ? "#dc2626" : "#059669", textTransform: "uppercase", letterSpacing: ".4px" }),
+    alertRow:(lvl) => ({ display: "flex", gap: 10, padding: "10px 0", borderBottom: "1px solid #f1f5f9" }),
+    alertIc: (lvl) => ({ width: 30, height: 30, borderRadius: 8, background: lvl === "danger" ? "#fee2e2" : "#fef3c7", color: lvl === "danger" ? "#dc2626" : "#d97706", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }),
+    empty:   { padding: 28, textAlign: "center", color: "#94a3b8", fontSize: 12.5, fontStyle: "italic" },
+    cardio:  { display: "flex", flexDirection: "column", gap: 10 },
+    barRow:  { display: "grid", gridTemplateColumns: "110px 1fr 40px", gap: 10, alignItems: "center" },
+    barLbl:  { fontSize: 12, color: "#0f172a", fontWeight: 600 },
+    barTrack:{ height: 8, background: "#f1f5f9", borderRadius: 999, overflow: "hidden" },
+    barFill: (c, w) => ({ height: "100%", width: `${w}%`, background: c, borderRadius: 999, transition: "width .4s ease" }),
+    barVal:  { fontSize: 13, fontWeight: 800, color: "#0f172a", textAlign: "right" },
+    qa:      { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 },
+    qaBtn:   (c, bg) => ({ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: bg, border: `1px solid ${c}33`, borderRadius: 10, cursor: "pointer", textAlign: "left" }),
+    qaIc:    (c) => ({ width: 34, height: 34, borderRadius: 9, background: "#fff", color: c, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: `0 1px 4px ${c}33` }),
+    qaL:     (c) => ({ fontSize: 12.5, fontWeight: 700, color: c, flex: 1 }),
+  };
 
   return (
-    <div className="dash-v2-layout">
-      <header className="dash-v2-header">
-        <div>
-          <span className="dash-v2-eyebrow">Tableau de bord</span>
-          <h1>Cabinet cardio</h1>
-          <p>{dateStr}</p>
+    <div style={S.wrap}>
+      {/* ─── HERO HEADER ─── */}
+      <header style={S.hero}>
+        <div style={S.heroL}>
+          <span style={S.heroEye}>Tableau de bord · {timeStr}</span>
+          <h1 style={S.heroH}>{greeting}, Docteur</h1>
+          <p style={S.heroSub}>{dateStr}</p>
         </div>
-        <div className="dash-v2-header__actions">
-          <button onClick={() => onNav("patients")}><Users size={16} /> Patients</button>
-          <button onClick={() => onNav("appointments-page")}><CalendarDays size={16} /> Planning</button>
+        <div style={S.heroR}>
+          <button style={S.heroBtn} onClick={() => onNav("patients")}><Users size={15} /> Nouveau patient</button>
+          <button style={S.heroBtn} onClick={() => onNav("appointments-page")}><CalendarDays size={15} /> Agenda</button>
+          <button style={S.heroBtn} onClick={() => onNav("finance-page")}><DollarSign size={15} /> Finance</button>
         </div>
       </header>
 
-      <section className="dash-v2-metrics" aria-label="Indicateurs du cabinet">
-        {kpis.map((metric) => (
-          <DashboardMetricV2 key={metric.label} {...metric} />
+      {/* ─── 4 HERO KPI CARDS ─── */}
+      <section style={S.kpiGrid}>
+        {heroKpis.map(({ icon: Icon, label, value, detail, color, bg, trend, trendLabel }) => (
+          <div key={label} style={S.kpi(color, bg)}>
+            <div style={S.kpiHd}>
+              <div>
+                <div style={S.kpiLbl}>{label}</div>
+                <div style={S.kpiVal(color)}>{value}</div>
+                <div style={S.kpiDet}>{detail}</div>
+              </div>
+              <div style={S.kpiIc(color, bg)}><Icon size={18} /></div>
+            </div>
+            {trend !== null && trend > 0 && (
+              <span style={S.kpiTrend(color)}>▲ {trend} {trendLabel}</span>
+            )}
+          </div>
         ))}
       </section>
 
-      <div className="dash-v2-grid">
-        <section className="dash-v2-panel dash-v2-panel--agenda">
-          <div className="dash-v2-panel__header">
-            <div>
-              <span className="dash-v2-panel__kicker">Aujourd'hui</span>
-              <h2>Agenda clinique</h2>
+      {/* ─── MINI STATS STRIP ─── */}
+      <section style={S.miniRow}>
+        {mini.map(({ icon: Icon, label, value, color }) => (
+          <div key={label} style={S.mini(color)}>
+            <div style={S.miniIc(color)}><Icon size={16} /></div>
+            <div style={{ minWidth: 0 }}>
+              <div style={S.miniL}>{label}</div>
+              <div style={S.miniV}>{value}</div>
             </div>
-            <button className="dash-v2-text-btn" onClick={() => onNav("appointments-page")}>Tout voir</button>
           </div>
-          {appointments.length === 0 ? (
-            <DashboardEmptyV2
-              icon={Calendar}
-              title="Aucun rendez-vous aujourd'hui"
-              action="Planifier"
-              onAction={() => onNav("appointments-page")}
-            />
-          ) : (
-            <div className="dash-v2-list">
-              {appointments.slice(0, 7).map((item) => {
-                const urgent = item.status === "urgent";
-                return (
-                  <article key={item.id} className={`dash-v2-appointment ${urgent ? "is-urgent" : ""}`}>
-                    <time>{String(item.scheduled_at || "").slice(11, 16) || "--:--"}</time>
-                    <div>
-                      <strong>{fullname(item)}</strong>
-                      <span>{item.motif || item.title || "Consultation standard"}</span>
-                    </div>
-                    <em>{urgent ? "Urgent" : "Planifie"}</em>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
+        ))}
+      </section>
 
-        <section className="dash-v2-panel dash-v2-panel--alerts">
-          <div className="dash-v2-panel__header">
-            <div>
-              <span className="dash-v2-panel__kicker">Priorite</span>
-              <h2>Patients a surveiller</h2>
-            </div>
-            <span className="dash-v2-count">{attentionItems.length}</span>
+      {/* ─── GRID: AGENDA (2) + ALERTS (1) ─── */}
+      <section style={S.grid2}>
+        {/* Agenda */}
+        <div style={S.card}>
+          <div style={S.cardHd}>
+            <h2 style={S.cardT}><CalendarDays size={15} color="#2563eb" /> Agenda d'aujourd'hui <span style={S.cardSub}>({appointments.length})</span></h2>
+            <button style={S.link} onClick={() => onNav("appointments-page")}>Tout voir <ChevronRight size={12} /></button>
           </div>
-          {attentionItems.length === 0 ? (
-            <DashboardEmptyV2 icon={ShieldCheck} title="Aucune alerte active" />
-          ) : (
-            <div className="dash-v2-alert-list">
-              {attentionItems.slice(0, 6).map((item) => (
-                <article key={item.id} className={`dash-v2-alert is-${item.level}`}>
-                  <span><AlertTriangle size={16} /></span>
+          <div style={S.cardBd}>
+            {appointments.length === 0 ? (
+              <div style={S.empty}>Aucun rendez-vous aujourd'hui</div>
+            ) : appointments.slice(0, 8).map((a) => {
+              const urgent = a.status === "urgent";
+              return (
+                <div key={a.id} style={S.apptRow(urgent)}>
+                  <div style={S.apptTime(urgent)}>{String(a.scheduled_at || "").slice(11, 16) || "--:--"}</div>
                   <div>
-                    <strong>{item.title}</strong>
-                    <p>{item.message}</p>
-                    <small>{item.meta}</small>
+                    <div style={S.apptN}>{fullname(a)}</div>
+                    <div style={S.apptM}>{a.motif || a.title || "Consultation"}</div>
                   </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="dash-v2-panel dash-v2-panel--wide">
-          <div className="dash-v2-panel__header">
-            <div>
-              <span className="dash-v2-panel__kicker">Cardiologie</span>
-              <h2>Charge clinique</h2>
-            </div>
-            <span className="dash-v2-count">{cardioTotal}</span>
+                  <div style={S.apptTag(urgent)}>{urgent ? "Urgent" : "Planifié"}</div>
+                </div>
+              );
+            })}
           </div>
-          <div className="dash-v2-cardio-grid">
-            {cardioStats.map((item) => (
-              <div key={item.label} className="dash-v2-cardio-row">
-                <div>
-                  <strong>{item.label}</strong>
-                  <small>{item.detail}</small>
+        </div>
+
+        {/* Alerts */}
+        <div style={S.card}>
+          <div style={S.cardHd}>
+            <h2 style={S.cardT}><AlertTriangle size={15} color="#dc2626" /> Patients à surveiller</h2>
+            <span style={{ ...S.cardSub, fontWeight: 700, color: "#dc2626" }}>{attentionItems.length}</span>
+          </div>
+          <div style={S.cardBd}>
+            {attentionItems.length === 0 ? (
+              <div style={S.empty}>Aucune alerte active</div>
+            ) : attentionItems.slice(0, 6).map((it) => (
+              <div key={it.id} style={S.alertRow(it.level)}>
+                <div style={S.alertIc(it.level)}><AlertTriangle size={14} /></div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0f172a" }}>{it.title}</div>
+                  <div style={{ fontSize: 11.5, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.message}</div>
+                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{it.meta}</div>
                 </div>
-                <div className="dash-v2-track" aria-hidden="true">
-                  <span style={{ width: `${(item.value / maxBar) * 100}%` }} />
-                </div>
-                <b>{item.value}</b>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="dash-v2-panel">
-          <div className="dash-v2-panel__header">
-            <div>
-              <span className="dash-v2-panel__kicker">Suivi</span>
-              <h2>Consultations recentes</h2>
-            </div>
-            <button className="dash-v2-text-btn" onClick={() => onNav("patients")}>Patients</button>
+      {/* ─── GRID: CARDIO BARS + LATEST VISITS ─── */}
+      <section style={S.grid2}>
+        <div style={S.card}>
+          <div style={S.cardHd}>
+            <h2 style={S.cardT}><Activity size={15} color="#7c3aed" /> Charge clinique cardiologique</h2>
           </div>
-          {latest.length === 0 ? (
-            <DashboardEmptyV2 icon={ClipboardList} title="Aucune consultation saisie" />
-          ) : (
-            <div className="dash-v2-list">
-              {latest.slice(0, 6).map((item) => (
-                <article key={item.id} className="dash-v2-visit">
-                  <span><Clock size={15} /></span>
-                  <div>
-                    <strong>{fullname(item)}</strong>
-                    <small>{String(item.date_visite || "").replace("T", " ").slice(0, 16) || "Date non renseignee"}</small>
-                    <p>{item.motif || item.diagnostics || "Consultation"}</p>
-                  </div>
-                </article>
+          <div style={{ ...S.cardBd, maxHeight: "none" }}>
+            <div style={S.cardio}>
+              {cardioBars.map((b) => (
+                <div key={b.label} style={S.barRow}>
+                  <div style={S.barLbl}>{b.label}</div>
+                  <div style={S.barTrack}><div style={S.barFill(b.color, (b.value / maxBar) * 100)} /></div>
+                  <div style={S.barVal}>{b.value}</div>
+                </div>
               ))}
             </div>
-          )}
-        </section>
-      </div>
+          </div>
+        </div>
 
-      <section className="dash-v2-actions" aria-label="Actions rapides">
-        {quickActions.map((action) => {
-          const Icon = action.icon;
-          return (
-            <button key={action.label} className={`dash-v2-action is-${action.tone}`} onClick={() => onNav(action.target)}>
-              <span><Icon size={17} /></span>
-              <strong>{action.label}</strong>
-              <ChevronRight size={16} />
-            </button>
-          );
-        })}
+        <div style={S.card}>
+          <div style={S.cardHd}>
+            <h2 style={S.cardT}><Clock size={15} color="#059669" /> Consultations récentes</h2>
+            <button style={S.link} onClick={() => onNav("patients")}>Patients <ChevronRight size={12} /></button>
+          </div>
+          <div style={S.cardBd}>
+            {latest.length === 0 ? (
+              <div style={S.empty}>Aucune consultation</div>
+            ) : latest.slice(0, 6).map((v) => (
+              <div key={v.id} style={{ padding: "10px 0", borderBottom: "1px solid #f1f5f9" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0f172a" }}>{fullname(v)}</div>
+                <div style={{ fontSize: 11, color: "#64748b", margin: "2px 0" }}>{String(v.date_visite || "").replace("T", " ").slice(0, 16) || "—"}</div>
+                <div style={{ fontSize: 11.5, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.motif || v.diagnostics || "Consultation"}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── QUICK ACTIONS ─── */}
+      <section style={S.qa}>
+        {[
+          { icon: Plus,         label: "Nouveau patient", target: "patients",          color: "#2563eb", bg: "#eff6ff" },
+          { icon: CalendarDays, label: "Planifier RDV",   target: "appointments-page", color: "#059669", bg: "#ecfdf5" },
+          { icon: BookOpen,     label: "Base médicaments",target: "medicines-nav",     color: "#7c3aed", bg: "#f5f3ff" },
+          { icon: DollarSign,   label: "Finance & caisse",target: "finance-page",      color: "#d97706", bg: "#fffbeb" },
+          { icon: Settings,     label: "Modèles & config",target: "settings-nav",      color: "#0284c7", bg: "#f0f9ff" },
+          { icon: Upload,       label: "Importer base",   target: "import-legacy",     color: "#db2777", bg: "#fdf2f8" },
+        ].map(({ icon: Icon, label, target, color, bg }) => (
+          <button key={label} style={S.qaBtn(color, bg)} onClick={() => onNav(target)}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 4px 12px ${color}25`; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}>
+            <div style={S.qaIc(color)}><Icon size={16} /></div>
+            <div style={S.qaL(color)}>{label}</div>
+            <ChevronRight size={14} color={color} />
+          </button>
+        ))}
       </section>
     </div>
   );
@@ -1649,8 +1892,8 @@ function CivilPanelCard({ form, setForm, onNew, onSave, onDelete, saving, select
           {editing ? (
             <>
               <InputRow label="Code" value={form.code} onChange={v => update("code", v)} />
-              <InputRow label="Nom" value={form.nom} onChange={v => update("nom", v.toUpperCase())} />
-              <InputRow label="Prénom" value={form.prenom} onChange={v => update("prenom", v)} />
+              <InputRow label="Nom" value={form.prenom} onChange={v => update("prenom", v.toUpperCase())} />
+              <InputRow label="Prénom" value={form.nom} onChange={v => update("nom", v)} />
               <InputRow label="Date naissance" type="date" value={String(form.date_naissance || "").slice(0, 10)} onChange={v => update("date_naissance", v)} />
               <InputRow label="Âge" value={form.age} onChange={v => update("age", v)} />
               <InputRow label="Sexe" as="select" value={form.sexe} onChange={v => update("sexe", v)} />
@@ -1659,8 +1902,8 @@ function CivilPanelCard({ form, setForm, onNew, onSave, onDelete, saving, select
           ) : (
             <>
               <Row label="Code" value={form.code} />
-              <Row label="Nom" value={form.nom} />
-              <Row label="Prénom" value={form.prenom} />
+              <Row label="Nom" value={form.prenom} />
+              <Row label="Prénom" value={form.nom} />
               <Row label="Date naissance" value={form.date_naissance} />
               <Row label="Âge" value={form.age ? `${form.age} ans` : ""} />
               <Row label="Sexe" value={form.sexe} />
@@ -2455,7 +2698,7 @@ function AppointmentPanel({ patient, appointments, onSave }) {
   );
 }
 
-function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) {
+function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode, onFillVisit, onRefreshPatient }) {
   const [type, setType] = useState("ECG");
   const [file, setFile] = useState(null);
   const [notes, setNotes] = useState("");
@@ -2481,7 +2724,7 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
   const selectedAnalysis = aiAnalyses.find((item) => item.id === selectedAnalysisId) || aiAnalyses[0];
   const selectedPayload = getAnalysisPayload(selectedAnalysis);
   const uploadReady = Boolean(uploadMode?.upload_ready);
-  const setupMessage = uploadMode?.setup_message || "Configurez Cloudflare Tunnel pour activer le QR public.";
+  const setupMessage = uploadMode?.setup_message || "Configurez le tunnel réseau pour activer le QR public.";
   const aiModel = aiSettings.AI_LOCKED_MODEL || aiSettings.AI_MODEL_NAME || OR_DEFAULT_MODEL_NAME;
   const documentAiEnabled = isSettingEnabled(aiSettings.AI_DOCUMENT_AI_ENABLED ?? "true");
   const keyConfigured = aiSettings.AI_OPENROUTER_API_KEY_CONFIGURED === "true";
@@ -2492,6 +2735,11 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
   const cloudConfigured = isCloudConfigured() || backendCloudReady;
   const cloudReady = backendCloudReady || (isCloudConfigured() && cloudAiUsable(cloudSub));
   const aiUnavailable = !documentAiEnabled || (!keyConfigured && !cloudReady);
+  const linkedPatientLabel = fullname(patient);
+  const remoteActive = uploadMode?.mode === "remote" && String(uploadMode?.active_url || "").startsWith("https://");
+  const tunnelStatus = uploadMode?.tunnel?.status || "idle";
+  const cloudflareStatus = remoteActive ? "Actif" : (tunnelStatus === "starting" ? "Demarrage" : (uploadMode?.cloudflared_available ? "Disponible" : "Non configure"));
+  const trackedClinicalValues = useMemo(() => extractTrackedClinicalValues(valuesDraft), [valuesDraft]);
 
   useEffect(() => {
     if (isCloudConfigured()) {
@@ -2590,7 +2838,7 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
     setNotes("");
     if (result?.id) {
       setSelectedDocId(result.id);
-      if (isSettingEnabled(aiSettings.AI_AUTO_ANALYZE_AFTER_UPLOAD) && !consentRequired && documentAiEnabled && (keyConfigured || cloudReady)) {
+      if (!consentRequired && documentAiEnabled && (keyConfigured || cloudReady)) {
         await runAiAnalysis({ id: result.id }, false);
       }
     }
@@ -2638,7 +2886,7 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
         </div>
       );
     }
-    return <a className="btn btn--primary" href={url} target="_blank" rel="noreferrer"><Eye size={16} /> Ouvrir</a>;
+    return <a className="btn btn--primary" href={`${url}?download=1`} target="_blank" rel="noreferrer"><Eye size={16} /> Télécharger</a>;
   }
 
   function updateValue(index, key, value) {
@@ -2699,11 +2947,21 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
     setAiMessage("Analyse rejetee.");
   }
 
-  async function saveLabs() {
+  async function validateAndSaveClinicalValues() {
     if (!selectedAnalysis) return;
+    setAiError("");
+    const accepted = await api.acceptAiAnalysis(selectedAnalysis.id, {
+      summary: summaryDraft,
+      extracted_json: editedExtractedJson()
+    });
+    upsertAnalysis(accepted.analysis);
     const result = await api.saveAiLabs(selectedAnalysis.id, { values: valuesDraft });
     upsertAnalysis(result.analysis);
-    setAiMessage(result.lab_result_id ? "Valeurs enregistrees dans Analyses." : "Valeurs confirmees.");
+    await onRefreshPatient?.();
+    const savedTargets = [];
+    if (result.lab_result_id) savedTargets.push("biologie");
+    if (result.vital_result_id) savedTargets.push("constantes");
+    setAiMessage(savedTargets.length ? `Valeurs validees et enregistrees dans ${savedTargets.join(" et ")}.` : "Valeurs validees.");
   }
 
   const docTypeOptions = [
@@ -2729,22 +2987,45 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
         </div>
         <div className="docs-pro-sidebar__body">
           {docs.map((doc) => (
-            <button
+            <div
               key={doc.id}
               className={`docs-pro-doc ${selectedDoc?.id === doc.id ? "is-active" : ""}`}
-              onClick={() => setSelectedDocId(doc.id)}
+              style={{ display: "grid", gap: 8 }}
             >
-              <div className="docs-pro-doc__icon">
-                {doc.source === "QR Mobile" || doc.source === "mobile-qr" ? <Smartphone size={14} /> : <FileText size={14} />}
+              <button
+                type="button"
+                onClick={() => setSelectedDocId(doc.id)}
+                style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}
+              >
+                <div className="docs-pro-doc__icon">
+                  {doc.source === "QR Mobile" || doc.source === "mobile-qr" ? <Smartphone size={14} /> : <FileText size={14} />}
+                </div>
+                <div className="docs-pro-doc__info" style={{ minWidth: 0 }}>
+                  <strong>{doc.original_name}</strong>
+                  <span>{doc.type_document}</span>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>Patient lie: {linkedPatientLabel}</span>
+                </div>
+                <span className={`docs-pro-doc__badge ${doc.source === "QR Mobile" || doc.source === "mobile-qr" ? "is-qr" : ""}`}>
+                  {doc.source === "QR Mobile" || doc.source === "mobile-qr" ? "QR" : doc.type_document?.slice(0, 3)?.toUpperCase()}
+                </span>
+              </button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button className="docs-pro-pill-btn" type="button" onClick={() => setSelectedDocId(doc.id)}>
+                  <Eye size={13} /> Apercu
+                </button>
+                <button
+                  className="docs-pro-pill-btn"
+                  type="button"
+                  disabled={aiUnavailable || aiLoadingDocId === doc.id || (consentRequired && !consentConfirmed)}
+                  onClick={() => {
+                    setSelectedDocId(doc.id);
+                    runAiAnalysis(doc, consentConfirmed, false);
+                  }}
+                >
+                  <Bot size={13} /> Analyser IA
+                </button>
               </div>
-              <div className="docs-pro-doc__info">
-                <strong>{doc.original_name}</strong>
-                <span>{doc.type_document}</span>
-              </div>
-              <span className={`docs-pro-doc__badge ${doc.source === "QR Mobile" || doc.source === "mobile-qr" ? "is-qr" : ""}`}>
-                {doc.source === "QR Mobile" || doc.source === "mobile-qr" ? "QR" : doc.type_document?.slice(0, 3)?.toUpperCase()}
-              </span>
-            </button>
+            </div>
           ))}
           {!docs.length && (
             <div className="docs-pro-empty">
@@ -2757,6 +3038,34 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
 
       {/* Right: Upload + QR + Preview + AI */}
       <div className="docs-pro-main">
+        <section className="docs-pro-card">
+          <div className="docs-pro-card__body" style={{ display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+              {[
+                { label: "QR Upload", value: uploadReady ? "Prêt" : "Indisponible", tone: uploadReady ? "#059669" : "#b45309", icon: QrCode },
+                { label: "Documents", value: String(docs.length), tone: "#0f172a", icon: FileText },
+                { label: "Analyse IA", value: aiUnavailable ? "Indisponible" : "Prête", tone: aiUnavailable ? "#b91c1c" : "#7c3aed", icon: Bot }
+              ].map((item) => (
+                <div key={item.label} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 14, background: "#fff" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, color: item.tone, marginBottom: 8 }}>
+                    <item.icon size={15} />
+                    <strong style={{ fontSize: 12 }}>{item.label}</strong>
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="docs-pro-upload-btn" disabled={!patient || !file} onClick={handleUploadClick}>
+                <Upload size={14} /> Upload document
+              </button>
+              <button className="docs-pro-gen-btn" disabled={!canSendToAi || aiLoadingDocId === selectedDoc?.id} onClick={() => runAiAnalysis(selectedDoc, consentConfirmed, false)}>
+                <Bot size={14} /> Analyser IA
+              </button>
+            </div>
+          </div>
+        </section>
+
         {/* Upload Card */}
         <section
           className={`docs-pro-card docs-pro-card--upload ${dragging ? "is-dragging" : ""}`}
@@ -2920,7 +3229,6 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
           </div>
           <div className="docs-pro-card__body">
             <div className="docs-pro-ai-meta">
-              <span className="docs-pro-ai-badge">Modele: <strong>{aiModel}</strong></span>
               <span className="docs-pro-ai-badge">Mode: <strong>{aiAnalysisMode}</strong></span>
               {cloudSub ? (
                 <span className={`docs-pro-ai-badge ${cloudSub.remaining_credits < 5 ? "docs-pro-ai-badge--warn" : ""}`}>
@@ -2980,6 +3288,19 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
 
                 <section className="docs-pro-ai-section">
                   <div className="docs-pro-ai-section__title"><FlaskConical size={14} /> Valeurs detectees</div>
+                  {trackedClinicalValues.length > 0 && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 12 }}>
+                      {trackedClinicalValues.map((item) => (
+                        <div key={item.key} style={{ border: "1px solid #dbeafe", background: "#f8fbff", borderRadius: 10, padding: "10px 12px" }}>
+                          <div style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 700 }}>{item.label}</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", marginTop: 4 }}>
+                            {item.value}{item.unit ? ` ${item.unit}` : ""}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: "#64748b", marginTop: 4 }}>{item.source}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {valuesDraft.length ? (
                     <div className="docs-pro-table-wrap">
                       <table className="docs-pro-table">
@@ -3002,8 +3323,43 @@ function DocumentsPanel({ patient, detail, onUpload, onSaveNotes, uploadMode }) 
                   ) : <p className="docs-pro-empty-text">Aucune valeur structuree detectee</p>}
                   <div className="docs-pro-ai-section__actions">
                     {editingAnalysis && <button className="docs-pro-pill-btn" onClick={addValueRow}><Plus size={14} /> Valeur</button>}
-                    <button className="docs-pro-gen-btn" disabled={!valuesDraft.length} onClick={saveLabs}><Save size={14} /> Enregistrer valeurs</button>
+                    <button className="docs-pro-gen-btn" disabled={!valuesDraft.length} onClick={validateAndSaveClinicalValues}>
+                      <Save size={14} /> Valider et enregistrer
+                    </button>
+                    {onFillVisit && valuesDraft.length > 0 && (
+                      <button className="docs-pro-gen-btn" style={{ background: "#059669" }} onClick={() => {
+                        const data = {};
+                        const labLines = [];
+                        valuesDraft.forEach(v => {
+                          const a = (v.analyte || "").toLowerCase();
+                          const val = (v.value || "").trim();
+                          if (!val) return;
+                          if (a.includes("glyc") || a.includes("glucose")) { data.glycemie = val + (v.unit ? " " + v.unit : ""); }
+                          else if (a.includes("fc") || a.includes("fréquence") || a.includes("cardiaque") || a.includes("pouls") || a === "hr") { data.frequence_cardiaque = val; }
+                          else if (a.includes("tension") || a === "ta" || a === "pas" || a === "pad" || a.includes("systol") || a.includes("diastol")) { data.tension = val; }
+                          else if (a.includes("poids")) { data.poids = val; }
+                          else if (a.includes("taille")) { data.taille = val; }
+                          else { labLines.push(`${v.analyte}: ${val}${v.unit ? " " + v.unit : ""}${v.abnormal_flag ? " [" + v.abnormal_flag + "]" : ""}`); }
+                        });
+                        if (labLines.length) data.examens = labLines.join("\n");
+                        onFillVisit(data);
+                        setAiMessage("✓ Valeurs appliquées au dossier. Vérifiez et sauvegardez.");
+                        setTimeout(() => setAiMessage(""), 4000);
+                      }}>
+                        <CheckCircle size={14} /> Remplir le dossier
+                      </button>
+                    )}
                   </div>
+                  {valuesDraft.length > 0 && (
+                    <p style={{ fontSize: 10.5, color: "#64748b", fontStyle: "italic", margin: "4px 0 0" }}>
+                      Aucun enregistrement automatique: le medecin doit valider avant sauvegarde dans le dossier patient.
+                    </p>
+                  )}
+                  {onFillVisit && valuesDraft.length > 0 && (
+                    <p style={{ fontSize: 10.5, color: "#64748b", fontStyle: "italic", margin: "4px 0 0" }}>
+                      Analyse IA à vérifier par le médecin avant enregistrement.
+                    </p>
+                  )}
                 </section>
 
                 <section className="docs-pro-ai-section">
@@ -3369,7 +3725,6 @@ function AIPanel({ patient, aiWarnings, onCheck, specialityConfig }) {
                 <span className={`ai-pro-badge ${disabled ? "is-off" : "is-on"}`}>
                   {disabled ? "Hors ligne" : "En ligne"}
                 </span>
-                <span className="ai-pro-badge ai-pro-badge--model">{lockedModel}</span>
                 <span className="ai-pro-badge ai-pro-badge--mode">{settings.AI_ANALYSIS_MODE || "short"}</span>
                 {cloudSub ? (
                    <span className={`ai-pro-badge ${cloudSub.remaining_credits < 5 ? "is-off" : "is-on"}`}>
@@ -3603,13 +3958,13 @@ function SettingsPanel({ uploadMode, onRefreshMode }) {
           </div>
           <div className={`mode-card ${isRemote ? "mode-card--active" : ""}`}>
             <Globe size={20} />
-            <strong>Cloudflare permanent</strong>
-            <p>N'importe quel telephone, Wi-Fi ou localisation apres configuration DNS.</p>
+            <strong>Tunnel distant permanent</strong>
+            <p>N'importe quel téléphone, Wi-Fi ou localisation après configuration.</p>
             {!isRemote && !isStarting && uploadMode?.cloudflared_available && (
               <button className="btn btn--primary" disabled={busy} onClick={startTunnel}><Globe size={14} /> Activer upload distant</button>
             )}
             {!isRemote && !isStarting && !uploadMode?.cloudflared_available && (
-              <span className="mode-badge mode-badge--warn">cloudflared.exe manquant</span>
+              <span className="mode-badge mode-badge--warn">Service tunnel manquant</span>
             )}
             {isStarting && <span className="mode-badge mode-badge--starting">Demarrage...</span>}
             {isRemote && <span className="mode-badge">Actif</span>}
@@ -3640,15 +3995,14 @@ function SettingsPanel({ uploadMode, onRefreshMode }) {
             <tr><td>URL locale</td><td><code>{uploadMode?.local_url || "..."}</code></td></tr>
             <tr><td>Mode actif</td><td><strong>{mode}</strong></td></tr>
             <tr><td>Tunnel</td><td>{tunnel.status} {tunnel.url && <code>{tunnel.url}</code>}</td></tr>
-            <tr><td>cloudflared</td><td>{uploadMode?.cloudflared_available ? <><CheckCircle size={13} /> Installe</> : <><XCircle size={13} /> Non trouve</>}</td></tr>
+            <tr><td>Service tunnel</td><td>{uploadMode?.cloudflared_available ? <><CheckCircle size={13} /> Installé</> : <><XCircle size={13} /> Non trouvé</>}</td></tr>
             {tunnel.binary_path && <tr><td>Executable</td><td><code>{tunnel.binary_path}</code></td></tr>}
             <tr><td>URL QR active</td><td><code>{uploadMode?.active_url || "..."}</code></td></tr>
           </tbody>
         </table>
         {!uploadMode?.cloudflared_available && (
           <p style={{ fontSize: 12, color: "#92400e", background: "var(--warning-light)", padding: 10, borderRadius: "var(--radius-sm)", border: "1px solid #fcd34d", marginTop: 8 }}>
-            <AlertTriangle size={13} style={{ verticalAlign: "middle" }} /> Pour le mode internet, placez <code>cloudflared.exe</code> dans le dossier <code>bin/</code>.
-            <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/" target="_blank" rel="noreferrer">Telecharger</a>
+            <AlertTriangle size={13} style={{ verticalAlign: "middle" }} /> Pour le mode internet, placez le service tunnel dans le dossier <code>bin/</code>.
           </p>
         )}
       </section>
@@ -4794,7 +5148,7 @@ function TemplateSelector({ templates, selected, onSelect, onNew, CAT_CFG }) {
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
-  const grouped = ["ordonnance", "certificat", "rapport", "general"].reduce((a, c) => {
+  const grouped = ["ordonnance", "bilan", "certificat", "courrier", "rapport", "general"].reduce((a, c) => {
     a[c] = templates.filter(t => t.category === c && (!filter || (t.name || "").toLowerCase().includes(filter.toLowerCase())));
     return a;
   }, {});
@@ -4837,9 +5191,9 @@ function TemplateSelector({ templates, selected, onSelect, onNew, CAT_CFG }) {
               <Plus size={13} /> Nouveau
             </button>
           </div>
-          {["ordonnance", "certificat", "rapport", "general"].map(cat => {
-            const items = grouped[cat]; if (!items.length) return null;
-            const cfg = CAT_CFG[cat];
+          {Object.keys(grouped).map(cat => {
+            const items = grouped[cat]; if (!items || !items.length) return null;
+            const cfg = CAT_CFG[cat] || { color: "#64748b", label: cat };
             return (
               <div key={cat} style={{ marginTop: 4 }}>
                 <div style={{ padding: "5px 10px", fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px" }}>
@@ -4877,7 +5231,14 @@ function TemplateSelector({ templates, selected, onSelect, onNew, CAT_CFG }) {
   );
 }
 
-function TemplateMoreMenu({ onHeader, onDuplicate, generatedDocs, category, setCategory }) {
+function normalizeTemplateCategory(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "general";
+  if (raw === "compte_rendu" || raw === "compte-rendu" || raw === "compterendu" || raw === "report") return "rapport";
+  return raw;
+}
+
+function TemplateMoreMenu({ onHeader, onDuplicate, onDelete, generatedDocs, category, setCategory, categoryOptions }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -4902,11 +5263,13 @@ function TemplateMoreMenu({ onHeader, onDuplicate, generatedDocs, category, setC
           minWidth: 220, padding: 6, zIndex: 60,
         }}>
           <div style={{ padding: "4px 10px 6px", fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".4px" }}>Catégorie</div>
-          <select value={category} onChange={e => setCategory(e.target.value)}
+          <select value={category} onChange={e => setCategory(normalizeTemplateCategory(e.target.value))}
             style={{ display: "block", width: "calc(100% - 12px)", margin: "0 6px 6px", padding: "7px 10px", border: "1px solid #eef2f7", borderRadius: 7, fontSize: 13, background: "#fff", outline: "none" }}>
             <option value="ordonnance">Ordonnance</option>
+            <option value="bilan">Bilan</option>
             <option value="certificat">Certificat</option>
-            <option value="rapport">Rapport</option>
+            <option value="courrier">Courrier</option>
+            <option value="rapport">Compte rendu</option>
             <option value="general">Général</option>
           </select>
           <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 4, paddingTop: 4 }}>
@@ -4922,6 +5285,14 @@ function TemplateMoreMenu({ onHeader, onDuplicate, generatedDocs, category, setC
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
               <Edit3 size={13} /> En-tête du cabinet
             </button>
+            {onDelete && (
+              <button onClick={() => { onDelete(); setOpen(false); }}
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 12px", border: "none", background: "transparent", borderRadius: 6, fontSize: 13, color: "#dc2626", cursor: "pointer", textAlign: "left" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#fef2f2"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <Trash2 size={13} /> Supprimer le modèle
+              </button>
+            )}
           </div>
           {generatedDocs && generatedDocs.length > 0 && (
             <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 4, paddingTop: 4 }}>
@@ -4944,13 +5315,18 @@ function TemplateMoreMenu({ onHeader, onDuplicate, generatedDocs, category, setC
   );
 }
 
-function DocumentTemplatesPanel({ patient }) {
+function DocumentTemplatesPanel({ patient, defaultCategory, allowedCategories }) {
   const [header, setHeader] = useState(() => { try { return JSON.parse(localStorage.getItem("ms_clinic_header") || "{}"); } catch { return {}; } });
   const [showHeaderEditor, setShowHeaderEditor] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [selected, setSelected] = useState(null);
   const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState("ordonnance");
+  const normalizedDefaultCategory = normalizeTemplateCategory(defaultCategory || "ordonnance");
+  const categoryScope = useMemo(() => {
+    if (!allowedCategories?.length) return null;
+    return [...new Set(allowedCategories.map((item) => normalizeTemplateCategory(item)))];
+  }, [allowedCategories]);
+  const [editCategory, setEditCategory] = useState(normalizedDefaultCategory);
   const [generatedDocs, setGeneratedDocs] = useState([]);
   const [saveMsg, setSaveMsg] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
@@ -4958,36 +5334,51 @@ function DocumentTemplatesPanel({ patient }) {
   const [aiBusy, setAiBusy] = useState(false);
   const [editMode, setEditMode] = useState(false); // false=preview (auto-filled), true=edit raw template
   const editorRef = useRef(null);
-  const [rightTab, setRightTab] = useState("ai");
   const [medSearch, setMedSearch] = useState("");
   const [medResults, setMedResults] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [prescriptionMeds, setPrescriptionMeds] = useState([]); // medicines added to aperçu ordonnance
   const [aiMedChecks, setAiMedChecks] = useState({}); // name→"checking"|"ok"|"warn"|"danger"
 
-  // Auto-load doctor profile from backend settings on mount
+  // Auto-load doctor profile from backend settings on mount — prefer localStorage edits
   useEffect(() => {
     api.doctorProfile().then(prof => {
       if (!prof) return;
-      const merged = {
-        doctor_name: prof.name || "",
-        specialty: prof.specialty || "",
-        phone: prof.phone || "",
-        address: prof.address || "",
-        email: prof.email || "",
-        order_number: prof.order_number || "",
-        clinic: prof.clinic_name || "",
-        city: prof.clinic_city || "",
-        logo: prof.logo_b64 || header.logo || "",
-      };
-      setHeader(merged);
-      localStorage.setItem("ms_clinic_header", JSON.stringify(merged));
+      setHeader(prev => {
+        const merged = {
+          doctor_name: prev.doctor_name || prof.name || "",
+          specialty: prev.specialty || prof.specialty || "",
+          phone: prev.phone || prof.phone || "",
+          address: prev.address || prof.address || "",
+          email: prev.email || prof.email || "",
+          order_number: prev.order_number || prof.order_number || "",
+          clinic: prev.clinic || prof.clinic_name || "",
+          city: prev.city || prof.clinic_city || "",
+          logo: prev.logo || prof.logo_b64 || "",
+        };
+        localStorage.setItem("ms_clinic_header", JSON.stringify(merged));
+        return merged;
+      });
     }).catch(() => {});
     loadTemplates();
   }, []);
   useEffect(() => { if (patient?.id) loadGeneratedDocs(); }, [patient?.id]);
   // Key for per-patient + per-template manual preview edits (localStorage persistence)
   const editsKey = (selected && patient) ? `ms_tmpl_edits_${patient.id}_${selected.id}` : null;
+
+  useEffect(() => {
+    if (categoryScope?.length) {
+      setEditCategory((current) => (categoryScope.includes(current) ? current : categoryScope[0]));
+      return;
+    }
+    setEditCategory(normalizedDefaultCategory);
+  }, [categoryScope, normalizedDefaultCategory]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setEditName(selected.name || "");
+    setEditCategory(normalizeTemplateCategory(selected.category));
+  }, [selected?.id]);
 
   useEffect(() => {
     if (selected && editorRef.current) {
@@ -5028,7 +5419,7 @@ function DocumentTemplatesPanel({ patient }) {
       try {
         const html = editorRef.current?.innerHTML || "";
         if (html === (selected.body_html || "")) return;
-        await api.updateDocumentTemplate(selected.id, { name: editName, category: editCategory, body_html: html });
+        await api.updateDocumentTemplate(selected.id, { name: editName, category: normalizeTemplateCategory(editCategory), body_html: html });
         setSaveMsg("✓ Auto-sauvegardé");
         setTimeout(() => setSaveMsg(""), 1500);
       } catch (_) {}
@@ -5036,7 +5427,21 @@ function DocumentTemplatesPanel({ patient }) {
     return () => clearTimeout(timer);
   }, [editName, editCategory, selected?.id]);
 
-  async function loadTemplates() { try { const d = await api.documentTemplates(); setTemplates(d.rows || []); } catch {} }
+  async function loadTemplates() {
+    try {
+      const d = await api.documentTemplates();
+      const rows = (d.rows || []).map((row) => ({ ...row, category: normalizeTemplateCategory(row.category) }));
+      const filtered = categoryScope?.length ? rows.filter((row) => categoryScope.includes(row.category)) : rows;
+      setTemplates(filtered);
+      setSelected((current) => {
+        if (current) {
+          const match = filtered.find((row) => row.id === current.id);
+          if (match) return match;
+        }
+        return filtered[0] || null;
+      });
+    } catch {}
+  }
   async function loadGeneratedDocs() { if (!patient?.id) return; try { const d = await api.patientGeneratedDocuments(patient.id); setGeneratedDocs(d.rows || []); } catch {} }
 
   function saveHeader(h) { setHeader(h); localStorage.setItem("ms_clinic_header", JSON.stringify(h)); }
@@ -5073,15 +5478,23 @@ function DocumentTemplatesPanel({ patient }) {
       setTimeout(() => setSaveMsg(""), 3000);
       return;
     }
-    await api.updateDocumentTemplate(selected.id, { name: editName, category: editCategory, body_html: editorRef.current.innerHTML });
+    await api.updateDocumentTemplate(selected.id, { name: editName, category: normalizeTemplateCategory(editCategory), body_html: editorRef.current.innerHTML });
     setSaveMsg("Modèle enregistré ✓"); setTimeout(() => setSaveMsg(""), 2500); loadTemplates(); setIsDirty(false);
   }
   async function newTemplate() {
     const name = prompt("Nom du nouveau modèle ?"); if (!name) return;
-    const tmpl = await api.createDocumentTemplate({ name, category: editCategory, body_html: "<p></p>" });
-    await loadTemplates(); if (tmpl?.id) selectTmpl({ ...tmpl, name, category: editCategory, body_html: "<p></p>" });
+    const nextCategory = normalizeTemplateCategory(editCategory);
+    const tmpl = await api.createDocumentTemplate({ name, category: nextCategory, body_html: "<p></p>" });
+    await loadTemplates(); if (tmpl?.id) selectTmpl({ ...tmpl, name, category: nextCategory, body_html: "<p></p>" });
   }
   async function dupTemplate() { if (!selected) return; await api.duplicateDocumentTemplate(selected.id); loadTemplates(); }
+  async function delTemplate() {
+    if (!selected) return;
+    if (!confirm(`Supprimer le modèle "${selected.name}" ?`)) return;
+    await api.deleteDocumentTemplate(selected.id);
+    setSelected(null); setEditName(""); loadTemplates();
+    setSaveMsg("Modèle supprimé"); setTimeout(() => setSaveMsg(""), 2000);
+  }
 
   function substituteVariables(html) {
     const today = new Date();
@@ -5094,10 +5507,11 @@ function DocumentTemplatesPanel({ patient }) {
     const treatmentHtml = prescriptionMeds.length === 0
       ? "<p style=\"color:#94a3b8;font-style:italic\">Aucun m&eacute;dicament prescrit</p>"
       : prescriptionMeds.map((m, i) =>
-          `<p style="margin:2pt 0 5pt;padding-left:10pt;font-family:'Times New Roman',serif;font-size:11.5pt;line-height:1.7">` +
+          `<p style="margin:0 0 2pt;padding-left:10pt;font-family:'Times New Roman',serif;font-size:11pt;line-height:1.4;page-break-inside:avoid">` +
           `<strong>${i + 1}. ${m.name}${m.dosage ? " " + m.dosage : ""}</strong>` +
           (m.dci ? ` <em>(${m.dci})</em>` : "") +
           " \u2014 " + (m.posologie || "Posologie\u00a0: ________") +
+          (m.days ? ` \u2014 pendant ${m.days} jour${String(m.days).trim() === "1" ? "" : "s"}` : "") +
           (m.instructions ? ` \u2014 ${m.instructions}` : "") +
           "</p>"
         ).join("");
@@ -5190,6 +5604,13 @@ function DocumentTemplatesPanel({ patient }) {
     }
     // Final sweep: replace any leftover {{...}} placeholders with a fillable underline
     out = out.replace(/\{\{[^}]+\}\}/g, "_______________");
+    // If doctor uploaded a logo, swap the hardcoded heart SVG inside legacy templates
+    // (e.g., "Certificat de dispense sportive") with their actual logo image.
+    if (header.logo) {
+      const logoImg = `<img src="${header.logo}" alt="logo" style="max-height:64px;max-width:80px;object-fit:contain;display:block;margin:0 auto;"/>`;
+      // Match any <svg ...>...</svg> that contains the heart logo signature
+      out = out.replace(/<svg\b[^>]*viewBox=["']0 0 96 96["'][\s\S]*?<\/svg>/gi, logoImg);
+    }
     return out;
   }
 
@@ -5212,7 +5633,8 @@ function DocumentTemplatesPanel({ patient }) {
     // Prefer imported GestionMédicale defaults so the doctor doesn't retype
     const posologie = med.default_posology || med.posologie || "";
     const qty = med.default_quantity || "1";
-    setPrescriptionMeds(prev => [...prev, { name, dosage, dci, posologie, instructions: "", qty }]);
+    const days = med.default_duration || med.days || "";
+    setPrescriptionMeds(prev => [...prev, { name, dosage, dci, posologie, instructions: "", qty, days }]);
     setMedSearch(""); setMedResults([]);
     // Immediate AI check — store level + reasons so UI can explain
     setAiMedChecks(s => ({ ...s, [name]: { level: "checking", reasons: [] } }));
@@ -5231,7 +5653,9 @@ function DocumentTemplatesPanel({ patient }) {
 
   function buildPrintHtml(withPatient = false) {
     const rawContent = editorRef.current?.innerHTML || "";
-    const content = substituteVariables(rawContent);
+    let content = substituteVariables(rawContent);
+    // Sanitize legacy template CSS that wastes vertical space on A5
+    content = content.replace(/min-height\s*:\s*[^;"]+;?/gi, "");
     const today = new Date();
     const fmtDate = today.toLocaleDateString("fr-DZ");
     const fmtTime = today.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -5260,12 +5684,13 @@ function DocumentTemplatesPanel({ patient }) {
     // Append medicines at bottom only if template has no {{treatment}} placeholder
     const hasRxSlot = (selected?.body_html || "").includes("{{treatment}}");
     const rxHtml = (!hasRxSlot && prescriptionMeds.length > 0)
-      ? `<div style="margin-top:12pt;padding-top:8pt;border-top:1px dashed #999">` +
+      ? `<div class="rx-block">` +
         prescriptionMeds.map((m, i) =>
-          `<p style="margin:3pt 0 6pt;padding-left:14pt;line-height:1.7">` +
+          `<p style="padding-left:10pt">` +
           `<strong>${i + 1}. ${m.name}${m.dosage ? " " + m.dosage : ""}</strong>` +
           (m.dci ? ` <em>(${m.dci})</em>` : "") +
           (m.posologie ? ` &mdash; <span>${m.posologie}</span>` : " &mdash; Posologie&nbsp;: ________") +
+          (m.days ? ` &mdash; pendant ${m.days} jour${String(m.days).trim() === "1" ? "" : "s"}` : "") +
           (m.instructions ? ` &mdash; ${m.instructions}` : "") +
           `</p>`
         ).join("") +
@@ -5273,20 +5698,27 @@ function DocumentTemplatesPanel({ patient }) {
       : "";
     // Standard ordonnance / body-only templates — wrap with 3-col header (A5)
     return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>${header.doctor_name || "Document"}</title><style>
-@page{size:A5;margin:10mm 12mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Times New Roman',serif;font-size:11pt;color:#111}
-.hdr-tbl{width:100%;border-collapse:collapse;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:4px}
-.hdr-tbl td{vertical-align:top;padding:0 4px}
+@page{size:A5;margin:8mm 10mm}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{font-family:'Times New Roman',serif;font-size:11pt;color:#111;line-height:1.45}
+.hdr-tbl{width:100%;border-collapse:collapse;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px}
+.hdr-tbl td{vertical-align:top;padding:0 3px}
 .hdr-left{width:38%}.hdr-center{width:24%;text-align:center;vertical-align:middle}.hdr-right{width:38%;text-align:right}
-.doc-name{font-size:13.5pt;font-weight:bold;margin-bottom:2px}
-.doc-spec{font-size:10.5pt;font-weight:bold}
-.doc-ordre{font-size:9pt;margin-top:3px}
-.hdr-right .rl{font-size:10.5pt;margin:2px 0}
-.sep{border:none;border-top:2px solid #000;margin:6px 0 12px}
-.body{min-height:160mm;line-height:1.8;font-size:11.5pt}
-.ftr{border-top:1.5px solid #000;padding-top:7px;font-size:9pt;text-align:center;margin-top:20px}
-ul,ol{padding-left:22px;margin:6px 0}table{width:100%;border-collapse:collapse;margin:8px 0}
-td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+.doc-name{font-size:12pt;font-weight:bold;margin-bottom:1px}
+.doc-spec{font-size:10pt;font-weight:bold}
+.doc-ordre{font-size:8.5pt;margin-top:2px;font-weight:normal}
+.hdr-right .rl{font-size:10pt;margin:1px 0}
+.sep{border:none;border-top:2px solid #000;margin:4px 0 8px}
+.body{font-size:11pt;line-height:1.5}
+.body p{margin:0 0 4pt}
+.body h1,.body h2,.body h3{margin:6pt 0 4pt}
+.body ul,.body ol{padding-left:18px;margin:4pt 0}
+.body table{width:100%;border-collapse:collapse;margin:4pt 0}
+.body table td,.body table th{border:1px solid #ccc;padding:3px 5px;font-size:10pt}
+.rx-block{margin-top:6pt;padding-top:4pt;border-top:1px dashed #888}
+.rx-block p{page-break-inside:avoid;break-inside:avoid;margin:0 0 2pt;line-height:1.35}
+.ftr{border-top:1px solid #000;padding-top:3px;font-size:8.5pt;text-align:center;margin-top:6pt;page-break-inside:avoid;break-inside:avoid}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none}}
 </style></head><body>
 <table class="hdr-tbl"><tr>
   <td class="hdr-left">
@@ -5338,17 +5770,48 @@ td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
   }
 
   const CAT_CFG = {
-    ordonnance: { color: "#3b82f6", bg: "#eff6ff", icon: "💊", label: "Ordonnances" },
-    certificat:  { color: "#22c55e", bg: "#f0fdf4", icon: "📋", label: "Certificats" },
-    rapport:     { color: "#f59e0b", bg: "#fffbeb", icon: "📊", label: "Rapports" },
-    general:     { color: "#64748b", bg: "#f8fafc", icon: "📄", label: "Généraux" },
+    ordonnance:   { color: "#3b82f6", bg: "#eff6ff", icon: "💊", label: "Ordonnances" },
+    bilan:        { color: "#8b5cf6", bg: "#f5f3ff", icon: "🔬", label: "Bilans" },
+    certificat:   { color: "#22c55e", bg: "#f0fdf4", icon: "📋", label: "Certificats" },
+    courrier:     { color: "#f59e0b", bg: "#fffbeb", icon: "✉",  label: "Courriers" },
+    rapport:      { color: "#ec4899", bg: "#fdf2f8", icon: "📊", label: "Comptes rendus" },
+    general:      { color: "#64748b", bg: "#f8fafc", icon: "📄", label: "Généraux" },
   };
-  const grouped = ["ordonnance", "certificat", "rapport", "general"].reduce((a, c) => { a[c] = templates.filter(t => t.category === c); return a; }, {});
+  const ALL_CATS = categoryScope?.length ? categoryScope.filter((cat) => CAT_CFG[cat]) : Object.keys(CAT_CFG);
+  const categoryOptions = ALL_CATS.map((cat) => ({ value: cat, label: CAT_CFG[cat]?.label || cat }));
+  const [filterCategory, setFilterCategory] = React.useState(normalizedDefaultCategory || "");
+  React.useEffect(() => { if (defaultCategory) setFilterCategory(normalizeTemplateCategory(defaultCategory)); }, [defaultCategory]);
+  const grouped = (templates || []).reduce((a, t) => { const c = t.category || "general"; (a[c] = a[c] || []).push(t); return a; }, {});
+  const visibleTemplates = filterCategory ? templates.filter(t => t.category === filterCategory) : templates;
 
   return (
     <div style={{ display: "flex", height: "100%", background: "#fafbfc", overflow: "hidden" }}>
 
-      {/* ══════════ MAIN AREA (full width — no left sidebar) ══════════ */}
+      {/* ══════════ LEFT CATEGORY SIDEBAR ══════════ */}
+      <aside style={{ width: 168, flexShrink: 0, background: "#fff", borderRight: "1px solid #eef2f7", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        <div style={{ padding: "11px 12px", borderBottom: "1px solid #eef2f7", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px" }}>Catégories</div>
+        <button onClick={() => setFilterCategory("")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: "none", background: filterCategory === "" ? "#eff6ff" : "transparent", color: filterCategory === "" ? "#1d4ed8" : "#475569", fontWeight: filterCategory === "" ? 700 : 500, fontSize: 12.5, cursor: "pointer", borderLeft: `3px solid ${filterCategory === "" ? "#3b82f6" : "transparent"}`, textAlign: "left" }}>
+          <span>📁</span> Tous les modèles
+        </button>
+        {ALL_CATS.map(cat => {
+          const cfg = CAT_CFG[cat];
+          const count = (grouped[cat] || []).length;
+          return (
+            <button key={cat} onClick={() => { setFilterCategory(cat); setEditCategory(cat); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", border: "none", background: filterCategory === cat ? cfg.bg : "transparent", color: filterCategory === cat ? cfg.color : "#475569", fontWeight: filterCategory === cat ? 700 : 500, fontSize: 12.5, cursor: "pointer", borderLeft: `3px solid ${filterCategory === cat ? cfg.color : "transparent"}`, textAlign: "left", width: "100%" }}>
+              <span>{cfg.icon}</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfg.label}</span>
+              {count > 0 && <span style={{ fontSize: 10, background: filterCategory === cat ? cfg.color + "22" : "#f1f5f9", color: filterCategory === cat ? cfg.color : "#94a3b8", borderRadius: 999, padding: "1px 6px", fontWeight: 700 }}>{count}</span>}
+            </button>
+          );
+        })}
+        <div style={{ marginTop: "auto", padding: "10px 12px", borderTop: "1px solid #eef2f7" }}>
+          <button onClick={newTemplate} style={{ width: "100%", padding: "7px 10px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+            <Plus size={13} /> Nouveau
+          </button>
+        </div>
+      </aside>
+
+      {/* ══════════ MAIN AREA ══════════ */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
         {/* ─── Top bar : template dropdown + key actions ─── */}
@@ -5358,7 +5821,7 @@ td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
           borderBottom: "1px solid #eef2f7",
         }}>
           <TemplateSelector
-            templates={templates}
+            templates={visibleTemplates}
             selected={selected}
             onSelect={(t) => { selectTmpl(t); setIsDirty(false); }}
             onNew={newTemplate}
@@ -5386,10 +5849,10 @@ td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
 
               <button onClick={saveTemplate}
                 style={{
-                  padding: "9px 16px", borderRadius: 9, border: "none",
+                  padding: "9px 16px", borderRadius: 9,
+                  border: "1px solid #eef2f7",
                   fontSize: 13, fontWeight: 600, cursor: "pointer",
                   background: "#fff", color: "#0f172a",
-                  border: "1px solid #eef2f7",
                   display: "inline-flex", alignItems: "center", gap: 6,
                 }}>
                 <Save size={13} /> {saveMsg || "Sauvegarder"}
@@ -5420,66 +5883,196 @@ td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
               <TemplateMoreMenu
                 onHeader={() => setShowHeaderEditor(true)}
                 onDuplicate={dupTemplate}
+                onDelete={delTemplate}
                 generatedDocs={generatedDocs}
                 category={editCategory}
                 setCategory={setEditCategory}
+                categoryOptions={categoryOptions}
               />
             </>
           )}
         </div>
 
-        {/* ─── Minimal formatting toolbar (only in edit mode) ─── */}
+        {/* ─── Word-like formatting toolbar (only in edit mode) ─── */}
         {selected && editMode && (
           <div style={{
-            flexShrink: 0, display: "flex", alignItems: "center", gap: 4,
+            flexShrink: 0, display: "flex", alignItems: "center", gap: 3,
             padding: "6px 18px", background: "#fafbfc",
             borderBottom: "1px solid #eef2f7", flexWrap: "wrap",
           }}>
+            {/* Font family */}
+            <select title="Police" defaultValue="Times New Roman" onChange={e => exec("fontName", e.target.value)}
+              style={{ padding: "4px 6px", border: "1px solid #eef2f7", borderRadius: 5, fontSize: 11, background: "#fff", color: "#475569", cursor: "pointer", maxWidth: 115 }}>
+              {["Times New Roman","Arial","Helvetica","Georgia","Courier New","Verdana","Tahoma","Calibri"].map(f => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
+            </select>
+            {/* Font size */}
+            <select title="Taille" onChange={e => exec("fontSize", e.target.value)} defaultValue=""
+              style={{ padding: "4px 6px", border: "1px solid #eef2f7", borderRadius: 5, fontSize: 11, background: "#fff", color: "#475569", cursor: "pointer", width: 58 }}>
+              <option value="" disabled>Taille</option>
+              {[["1","8"],["2","10"],["3","12"],["4","14"],["5","18"],["6","24"],["7","36"]].map(([v,l]) => <option key={v} value={v}>{l}pt</option>)}
+            </select>
+            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 3px" }} />
+            {/* Bold, Italic, Underline, Strikethrough */}
             {[
-              { ic: <Bold size={13} />, cmd: "bold", title: "Gras" },
-              { ic: <Italic size={13} />, cmd: "italic", title: "Italique" },
-              { ic: <Underline size={13} />, cmd: "underline", title: "Souligné" },
+              { ic: <Bold size={13} />, cmd: "bold", title: "Gras (Ctrl+B)" },
+              { ic: <Italic size={13} />, cmd: "italic", title: "Italique (Ctrl+I)" },
+              { ic: <Underline size={13} />, cmd: "underline", title: "Souligné (Ctrl+U)" },
+              { ic: <Strikethrough size={13} />, cmd: "strikeThrough", title: "Barré" },
             ].map(b => (
               <button key={b.cmd} title={b.title} onMouseDown={e => { e.preventDefault(); exec(b.cmd); }}
-                style={{ padding: "5px 8px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
+                style={{ padding: "5px 7px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
                 onMouseEnter={e => e.currentTarget.style.background = "#eef2f7"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 {b.ic}
               </button>
             ))}
-            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 4px" }} />
+            <input type="color" title="Couleur du texte" onChange={e => exec("foreColor", e.target.value)} defaultValue="#000000"
+              style={{ width: 24, height: 22, padding: 0, border: "1px solid #eef2f7", borderRadius: 5, cursor: "pointer" }} />
+            <input type="color" title="Surbrillance" onChange={e => exec("hiliteColor", e.target.value)} defaultValue="#ffffff"
+              style={{ width: 24, height: 22, padding: 0, border: "1px solid #eef2f7", borderRadius: 5, cursor: "pointer" }} />
+            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 3px" }} />
+            {/* Alignment */}
             {[
-              { ic: <AlignLeft size={13} />, cmd: "justifyLeft" },
-              { ic: <AlignCenter size={13} />, cmd: "justifyCenter" },
-              { ic: <AlignRight size={13} />, cmd: "justifyRight" },
+              { ic: <AlignLeft size={13} />, cmd: "justifyLeft", title: "Aligner à gauche" },
+              { ic: <AlignCenter size={13} />, cmd: "justifyCenter", title: "Centrer" },
+              { ic: <AlignRight size={13} />, cmd: "justifyRight", title: "Aligner à droite" },
+              { ic: <AlignJustify size={13} />, cmd: "justifyFull", title: "Justifier" },
             ].map(b => (
-              <button key={b.cmd} onMouseDown={e => { e.preventDefault(); exec(b.cmd); }}
-                style={{ padding: "5px 8px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
+              <button key={b.cmd} title={b.title} onMouseDown={e => { e.preventDefault(); exec(b.cmd); }}
+                style={{ padding: "5px 7px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
                 onMouseEnter={e => e.currentTarget.style.background = "#eef2f7"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 {b.ic}
               </button>
             ))}
-            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 4px" }} />
+            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 3px" }} />
+            {/* Lists */}
             {[
-              { ic: <List size={13} />, cmd: "insertUnorderedList" },
-              { ic: <ListOrdered size={13} />, cmd: "insertOrderedList" },
+              { ic: <List size={13} />, cmd: "insertUnorderedList", title: "Liste à puces" },
+              { ic: <ListOrdered size={13} />, cmd: "insertOrderedList", title: "Liste numérotée" },
             ].map(b => (
-              <button key={b.cmd} onMouseDown={e => { e.preventDefault(); exec(b.cmd); }}
-                style={{ padding: "5px 8px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
+              <button key={b.cmd} title={b.title} onMouseDown={e => { e.preventDefault(); exec(b.cmd); }}
+                style={{ padding: "5px 7px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
                 onMouseEnter={e => e.currentTarget.style.background = "#eef2f7"}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 {b.ic}
               </button>
             ))}
-            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 4px" }} />
-            <select title="Taille" onChange={e => exec("fontSize", e.target.value)} defaultValue=""
+            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 3px" }} />
+            {/* Paragraph style */}
+            <select title="Style de paragraphe" defaultValue="" onChange={(e) => { if (e.target.value) { exec("formatBlock", e.target.value); e.target.value = ""; } }}
               style={{ padding: "4px 6px", border: "1px solid #eef2f7", borderRadius: 5, fontSize: 11, background: "#fff", color: "#475569", cursor: "pointer" }}>
-              <option value="" disabled>Taille</option>
-              {[["1","8pt"],["2","10pt"],["3","12pt"],["4","14pt"],["5","18pt"],["6","24pt"],["7","36pt"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+              <option value="" disabled>Style</option>
+              <option value="H1">Titre 1</option>
+              <option value="H2">Titre 2</option>
+              <option value="H3">Titre 3</option>
+              <option value="P">Paragraphe</option>
+              <option value="BLOCKQUOTE">Citation</option>
+              <option value="PRE">Code</option>
             </select>
-            <input type="color" title="Couleur" onChange={e => exec("foreColor", e.target.value)} defaultValue="#000000"
-              style={{ width: 26, height: 22, padding: 0, border: "1px solid #eef2f7", borderRadius: 5, cursor: "pointer" }} />
+            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 3px" }} />
+            {/* Table insertion */}
+            <button title="Insérer un tableau" onMouseDown={e => {
+              e.preventDefault();
+              const rows = prompt("Nombre de lignes :", "3"); if (!rows) return;
+              const cols = prompt("Nombre de colonnes :", "3"); if (!cols) return;
+              const r = parseInt(rows, 10) || 3; const c = parseInt(cols, 10) || 3;
+              let html = '<table style="width:100%;border-collapse:collapse;margin:8px 0"><tbody>';
+              for (let i = 0; i < r; i++) {
+                html += "<tr>";
+                for (let j = 0; j < c; j++) html += `<td style="border:1px solid #ccc;padding:6px 8px;min-width:40px">${i === 0 ? "<strong>&nbsp;</strong>" : "&nbsp;"}</td>`;
+                html += "</tr>";
+              }
+              html += "</tbody></table><p></p>";
+              exec("insertHTML", html);
+            }}
+              style={{ padding: "5px 7px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#eef2f7"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <Table2 size={13} />
+            </button>
+            {/* Horizontal rule */}
+            <button title="Ligne horizontale" onMouseDown={e => { e.preventDefault(); exec("insertHTML", "<hr style='border:none;border-top:1px solid #999;margin:10px 0'/>"); }}
+              style={{ padding: "5px 7px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#eef2f7"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <Minus size={13} />
+            </button>
+            {/* Image / Logo insertion */}
+            <button title="Insérer une image / logo" onMouseDown={e => {
+              e.preventDefault();
+              const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+              inp.onchange = () => {
+                const file = inp.files?.[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => { exec("insertHTML", `<img src="${ev.target.result}" alt="image" style="max-width:100%;max-height:200px;display:block;margin:8px auto;"/>`); };
+                reader.readAsDataURL(file);
+              };
+              inp.click();
+            }}
+              style={{ padding: "5px 7px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#eef2f7"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <Image size={13} />
+            </button>
+            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 3px" }} />
+            {/* Variables */}
+            <select title="Insérer une variable" defaultValue="" onChange={(e) => { if (e.target.value) { insertVariable(e.target.value); e.target.value = ""; } }}
+              style={{ padding: "4px 6px", border: "1px solid #93c5fd", borderRadius: 5, fontSize: 11, background: "#eff6ff", color: "#1d4ed8", cursor: "pointer", fontWeight: 600 }}>
+              <option value="" disabled>＋ Variable</option>
+              <optgroup label="Patient">
+                <option value="{{patient_full_name_upper}}">Nom complet (MAJ)</option>
+                <option value="{{patient.nom}}">Nom</option>
+                <option value="{{patient.prenom}}">Prénom</option>
+                <option value="{{patient.age}}">Âge</option>
+                <option value="{{patient.date_naissance}}">Date naissance</option>
+                <option value="{{patient.sexe}}">Sexe</option>
+                <option value="{{patient.telephone}}">Téléphone</option>
+                <option value="{{patient.adresse}}">Adresse</option>
+                <option value="{{patient.code}}">N° dossier</option>
+                <option value="{{patient.groupe_sanguin}}">Gr. sanguin</option>
+                <option value="{{patient.allergies}}">Allergies</option>
+                <option value="{{patient.profession}}">Profession</option>
+                <option value="{{patient_subject}}">Le/La patient(e)</option>
+                <option value="{{patient_birth_label}}">Né(e) le</option>
+              </optgroup>
+              <optgroup label="Médecin">
+                <option value="{{doctor.name}}">Nom médecin</option>
+                <option value="{{doctor.specialty}}">Spécialité</option>
+                <option value="{{doctor.order_number}}">N° Ordre</option>
+                <option value="{{doctor.clinic}}">Cabinet</option>
+                <option value="{{doctor.city}}">Ville</option>
+                <option value="{{doctor.phone}}">Téléphone</option>
+                <option value="{{doctor.address}}">Adresse</option>
+                <option value="{{doctor.email}}">Email</option>
+              </optgroup>
+              <optgroup label="Date / Document">
+                <option value="{{date}}">Date du jour</option>
+                <option value="{{date_long}}">Date longue</option>
+                <option value="{{heure}}">Heure</option>
+                <option value="{{date_time_full}}">Date + Heure</option>
+                <option value="{{school_year}}">Année scolaire</option>
+              </optgroup>
+              <optgroup label="Contenu médical">
+                <option value="{{diagnostic}}">Diagnostic</option>
+                <option value="{{treatment}}">Traitement / Ordonnance</option>
+                <option value="{{motif}}">Motif consultation</option>
+                <option value="{{examen_clinique}}">Examen clinique</option>
+                <option value="{{conclusion}}">Conclusion</option>
+                <option value="{{observations}}">Observations</option>
+                <option value="{{antecedents}}">Antécédents</option>
+                <option value="{{allergies}}">Allergies</option>
+                <option value="{{duration}}">Durée</option>
+              </optgroup>
+              <optgroup label="Logo">
+                <option value="{{clinic_logo_data_url}}">Logo du cabinet</option>
+              </optgroup>
+            </select>
+            <span style={{ width: 1, height: 18, background: "#e5e7eb", margin: "0 3px" }} />
+            <button title="Annuler (Ctrl+Z)" onMouseDown={(e) => { e.preventDefault(); exec("undo"); }}
+              style={{ padding: "5px 7px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569", fontSize: 13 }}>↶</button>
+            <button title="Rétablir (Ctrl+Y)" onMouseDown={(e) => { e.preventDefault(); exec("redo"); }}
+              style={{ padding: "5px 7px", border: "none", background: "transparent", borderRadius: 5, cursor: "pointer", color: "#475569", fontSize: 13 }}>↷</button>
           </div>
         )}
 
@@ -5557,11 +6150,13 @@ td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
                                 {aiReasons.slice(0, 3).map((r, k) => <li key={k}>{r}</li>)}
                               </ul>
                             )}
-                            <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr", gap: 6, marginTop: 5 }}>
                               <input value={m.posologie} onChange={e => setPrescriptionMeds(prev => prev.map((x, j) => j === i ? { ...x, posologie: e.target.value } : x))}
-                                placeholder="Posologie…" style={{ flex: 1, fontSize: 11.5, padding: "3px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontFamily: "inherit", outline: "none" }} />
+                                placeholder="Posologie (ex: 1 cp matin)" style={{ fontSize: 11.5, padding: "4px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontFamily: "inherit", outline: "none" }} />
+                              <input value={m.days || ""} onChange={e => setPrescriptionMeds(prev => prev.map((x, j) => j === i ? { ...x, days: e.target.value } : x))}
+                                placeholder="Durée (j)" title="Durée en jours" style={{ fontSize: 11.5, padding: "4px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontFamily: "inherit", outline: "none", textAlign: "center" }} />
                               <input value={m.instructions} onChange={e => setPrescriptionMeds(prev => prev.map((x, j) => j === i ? { ...x, instructions: e.target.value } : x))}
-                                placeholder="Instructions…" style={{ flex: 1, fontSize: 11.5, padding: "3px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontFamily: "inherit", outline: "none" }} />
+                                placeholder="Instructions (ex: avant repas)" style={{ fontSize: 11.5, padding: "4px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontFamily: "inherit", outline: "none" }} />
                             </div>
                           </div>
                           <button onClick={() => setPrescriptionMeds(prev => prev.filter((_, j) => j !== i))}
@@ -5576,7 +6171,8 @@ td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
               </div>
             </div>
 
-            {/* ══════════ RIGHT PANEL — MEDICAMENTS ONLY ══════════ */}
+            {/* ══════════ RIGHT PANEL — MEDICAMENTS (only with patient context) ══════════ */}
+            {patient && (
             <aside style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", background: "#fff", borderLeft: "1px solid #eef2f7", overflow: "hidden" }}>
               <div style={{ padding: "14px 16px 10px", borderBottom: "1px solid #eef2f7" }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", display: "flex", alignItems: "center", gap: 7 }}>
@@ -5643,8 +6239,41 @@ td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
                     {patient.maladies && <div>Antécédents : {patient.maladies}</div>}
                   </div>
                 )}
+
+                {generatedDocs.length > 0 && (
+                  <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #eef2f7" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", marginBottom: 8, textTransform: "uppercase", letterSpacing: ".4px" }}>
+                      Historique du patient
+                    </div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {generatedDocs.slice(0, 8).map((doc) => (
+                        <a
+                          key={doc.id}
+                          href={api.generatedDocumentPdf(doc.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 3,
+                            padding: "9px 10px",
+                            border: "1px solid #eef2f7",
+                            borderRadius: 9,
+                            background: "#fafbfc",
+                            color: "#0f172a",
+                            textDecoration: "none",
+                          }}
+                        >
+                          <strong style={{ fontSize: 12.5, fontWeight: 600 }}>{doc.title || "Document"}</strong>
+                          <span style={{ fontSize: 11, color: "#64748b" }}>{String(doc.created_at || "").slice(0, 16).replace("T", " ")}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </aside>
+            )}
 
           </div>
         ) : (
@@ -5656,189 +6285,6 @@ td,th{border:1px solid #ccc;padding:5px 8px;font-size:11pt}
           </div>
         )}
       </div>
-
-      {/* (removed legacy right panel with 4 tabs) */}
-      <aside style={{ display: "none" }}>
-        {/* Tab bar */}
-        <div style={{ display: "flex", borderBottom: "2px solid #f1f5f9", background: "#fafbfc", flexShrink: 0 }}>
-          {[
-            { key: "ai",        icon: Sparkles,    label: "IA",          color: "#7c3aed" },
-            { key: "medicines", icon: Pill,         label: "Médic.",      color: "#2563eb" },
-            { key: "vars",      icon: Hash,         label: "Variables",   color: "#0891b2" },
-            { key: "history",   icon: Clock,        label: "Historique",  color: "#64748b" },
-          ].map(tab => (
-            <button key={tab.key} onClick={() => setRightTab(tab.key)}
-              style={{ flex: 1, padding: "9px 2px", border: "none", background: "none", cursor: "pointer", fontSize: 9.5, fontWeight: 700, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: rightTab === tab.key ? tab.color : "#94a3b8", borderBottom: rightTab === tab.key ? `2px solid ${tab.color}` : "2px solid transparent", marginBottom: -2 }}>
-              <tab.icon size={14} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
-
-          {/* ── IA TAB ── */}
-          {rightTab === "ai" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ background: "linear-gradient(135deg,#faf5ff,#eff6ff)", border: "1px solid #c4b5fd", borderRadius: 10, padding: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 7, background: "#7c3aed", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Sparkles size={13} color="#fff" />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#4c1d95" }}>Génération IA</span>
-                </div>
-                <p style={{ fontSize: 11, color: "#6d28d9", margin: "0 0 8px", lineHeight: 1.4 }}>Décrivez le contenu — l'IA génère le modèle complet.</p>
-                <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)}
-                  placeholder="Ex: Ordonnance pour patient hypertendu avec amlodipine et losartan..."
-                  rows={3} style={{ width: "100%", padding: "7px 9px", border: "1px solid #c4b5fd", borderRadius: 7, fontSize: 11, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box", outline: "none", background: "#fefefe" }} />
-                <button onClick={generateWithAI} disabled={aiBusy || !aiPrompt.trim()}
-                  style={{ marginTop: 6, width: "100%", padding: "8px", borderRadius: 7, border: "none", background: aiBusy || !aiPrompt.trim() ? "#94a3b8" : "#7c3aed", color: "#fff", fontSize: 12, fontWeight: 700, cursor: aiBusy || !aiPrompt.trim() ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                  {aiBusy ? <><Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Génération…</> : <><Sparkles size={12} /> Générer</>}
-                </button>
-              </div>
-              <div>
-                <p style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", margin: "0 0 6px", textTransform: "uppercase", letterSpacing: 0.4 }}>Suggestions</p>
-                {[
-                  "Ordonnance médicaments chroniques",
-                  "Certificat de repos 3 jours",
-                  "Certificat dispense sportive",
-                  "Rapport de consultation cardio",
-                  "Courrier de référence spécialiste",
-                  "Ordonnance analyses biologiques",
-                ].map(s => (
-                  <button key={s} onClick={() => setAiPrompt(s)}
-                    style={{ display: "flex", width: "100%", textAlign: "left", alignItems: "center", gap: 6, padding: "7px 9px", marginBottom: 4, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, cursor: "pointer", color: "#334155" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#faf5ff"; e.currentTarget.style.borderColor = "#c4b5fd"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0"; }}>
-                    <Sparkles size={10} style={{ color: "#7c3aed", flexShrink: 0 }} />{s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── MEDICINES TAB ── */}
-          {rightTab === "medicines" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 9, padding: "8px 10px", fontSize: 11, color: "#1e40af", display: "flex", alignItems: "center", gap: 6 }}>
-                <Pill size={12} style={{ flexShrink: 0 }} />
-                Cliquez sur un médicament pour l'ajouter à l'ordonnance. L'IA vérifie instantanément.
-              </div>
-
-              {/* Search */}
-              <div style={{ position: "relative" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 10px", border: "1.5px solid #bfdbfe", borderRadius: 9, background: "#f8fafc" }}>
-                  <Search size={13} style={{ color: "#2563eb", flexShrink: 0 }} />
-                  <input value={medSearch} onChange={e => setMedSearch(e.target.value)} placeholder="Rechercher…"
-                    style={{ flex: 1, border: "none", background: "transparent", fontSize: 12, outline: "none" }} />
-                  {medSearch && <button onClick={() => { setMedSearch(""); setMedResults([]); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}><X size={11} /></button>}
-                </div>
-                {medResults.length > 0 && (
-                  <div style={{ position: "absolute", top: "calc(100% + 3px)", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 9, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 50, maxHeight: 200, overflowY: "auto" }}>
-                    {medResults.map(med => (
-                      <button key={med.id} onClick={() => insertMedicine(med)}
-                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 7, padding: "8px 10px", background: "none", border: "none", cursor: "pointer", textAlign: "left", borderBottom: "1px solid #f8fafc" }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "#eff6ff"; }}
-                        onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                        <Plus size={12} style={{ color: "#2563eb", flexShrink: 0 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#0f172a" }}>{med.brand_name}{med.dosage_strength ? " " + med.dosage_strength : ""}</div>
-                          <div style={{ fontSize: 10, color: "#64748b" }}>{med.dci}{med.form ? " · " + med.form : ""}</div>
-                          {med.default_posology && (
-                            <div style={{ fontSize: 10, color: "#059669", fontWeight: 600, marginTop: 1 }}>
-                              ⓘ {med.default_posology}{med.default_quantity ? " · " + med.default_quantity : ""}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Frequent medicines */}
-              <div>
-                <p style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", margin: "0 0 6px", textTransform: "uppercase", letterSpacing: 0.4 }}>Fréquents</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {["ASPEGIC 100","CARDENSIEL","COVERSYL","TRIATEC","AMLOR","TAHOR","XARELTO","PREVISCAN","LASILIX","ALDACTONE","DOLIPRANE 1g","AUGMENTIN 1g","AMOXICILLINE","METFORMINE","ATORVASTATINE"].map(name => (
-                    <button key={name}
-                      onClick={() => insertMedicine({ brand_name: name, dci: "", dosage_strength: "" })}
-                      style={{ padding: "4px 9px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, fontSize: 10.5, fontWeight: 600, color: "#1e40af", cursor: "pointer" }}>
-                      + {name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── VARIABLES TAB ── */}
-          {rightTab === "vars" && (
-            <div>
-              <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 9, padding: "7px 10px", fontSize: 11, color: "#0369a1", marginBottom: 10 }}>
-                <Hash size={11} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                {editMode
-                  ? "Cliquez pour insérer la variable au curseur."
-                  : <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      Mode aperçu actif.
-                      <button onClick={() => setEditMode(true)}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", background: "#fef3c7", border: "1px solid #fbbf24", borderRadius: 6, fontSize: 11, fontWeight: 700, color: "#92400e", cursor: "pointer" }}>
-                        <Pencil size={11} /> Activer Édition
-                      </button>
-                    </span>}
-              </div>
-              {[
-                { group: "👤 Patient", vars: [["{{patient.fullname}}","Nom complet"],["{{patient.nom}}","Nom"],["{{patient.prenom}}","Prénom"],["{{patient.age_complet}}","Âge"],["{{patient.date_naissance}}","Date naissance"],["{{patient.sexe}}","Sexe"],["{{patient.telephone}}","Téléphone"],["{{patient.adresse}}","Adresse"],["{{patient.groupe_sanguin}}","Gr. sanguin"],["{{patient.allergies}}","Allergies"],["{{patient.profession}}","Profession"]] },
-                { group: "📅 Date", vars: [["{{date}}","Date du jour"],["{{date_long}}","Date longue"],["{{heure}}","Heure"]] },
-                { group: "👨‍⚕️ Médecin", vars: [["{{doctor.name}}","Nom médecin"],["{{doctor.specialty}}","Spécialité"],["{{doctor.order_number}}","N° Ordre"],["{{doctor.clinic}}","Cabinet"],["{{doctor.city}}","Ville"],["{{doctor.phone}}","Téléphone"],["{{doctor.address}}","Adresse"],["{{doctor.email}}","Email"]] },
-              ].map(({ group, vars: gVars }) => (
-                <div key={group} style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "#334155", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.4 }}>{group}</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {gVars.map(([token, label]) => (
-                      <button key={token} onClick={() => insertVariable(token)} disabled={!editMode} title={token}
-                        style={{ padding: "3px 8px", background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: 9, fontSize: 10.5, cursor: editMode ? "pointer" : "not-allowed", color: "#334155", opacity: editMode ? 1 : 0.5 }}
-                        onMouseEnter={e => { if (editMode) { e.currentTarget.style.background = "#e0f2fe"; e.currentTarget.style.borderColor = "#38bdf8"; } }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.borderColor = "#cbd5e1"; }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── HISTORY TAB ── */}
-          {rightTab === "history" && (
-            <div>
-              {generatedDocs.length > 0 ? (
-                <>
-                  <p style={{ fontSize: 11, color: "#64748b", margin: "0 0 10px" }}>Documents générés pour ce patient :</p>
-                  {generatedDocs.slice(0, 12).map(doc => (
-                    <div key={doc.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, marginBottom: 5 }}>
-                      <div style={{ minWidth: 0, flex: 1, marginRight: 6 }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.title}</div>
-                        <div style={{ fontSize: 10, color: "#94a3b8" }}>{String(doc.created_at || "").slice(0, 10)}</div>
-                      </div>
-                      <a href={api.generatedDocumentPdf(doc.id)} target="_blank" rel="noreferrer"
-                        style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 7, background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", textDecoration: "none", flexShrink: 0 }} title="Télécharger PDF">
-                        <Download size={12} />
-                      </a>
-                    </div>
-                  ))}
-                </>
-              ) : (
-                <div style={{ textAlign: "center", padding: "30px 0", color: "#94a3b8" }}>
-                  <Clock size={32} style={{ opacity: 0.25, marginBottom: 8 }} />
-                  <p style={{ fontSize: 11, margin: 0 }}>{patient ? "Aucun document généré pour ce patient." : "Sélectionnez un patient pour voir l'historique."}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-        </div>
-      </aside>
 
       {/* ══════════ HEADER EDITOR MODAL ══════════ */}
       {showHeaderEditor && (
@@ -5989,6 +6435,515 @@ function DoctorSettingsPanel() {
   );
 }
  
+
+// ═══════════════════════════════════════════════════════════════════════
+// RÉFÉRENTIELS PANEL — Generic CRUD for all 8 reference entities
+// ═══════════════════════════════════════════════════════════════════════
+
+const REF_ENTITIES = [
+  {
+    key: "medicines", label: "Médicaments", icon: Pill, color: "#2563eb",
+    columns: [
+      { key: "brand_name", label: "Nom commercial", required: true },
+      { key: "dci", label: "DCI" },
+      { key: "dosage_strength", label: "Dosage" },
+      { key: "form", label: "Forme" },
+      { key: "route", label: "Voie" },
+      { key: "laboratory", label: "Laboratoire" },
+      { key: "indications", label: "Indications" },
+    ],
+    list: () => api.gestionDbMedicines("", 2000),
+    listKey: "rows",
+    create: (b) => api.addMedicine(b),
+    update: (id, b) => api.updateMedicine(id, b),
+    remove: (id) => api.deleteMedicine(id),
+    searchFields: ["brand_name", "dci", "laboratory"],
+  },
+  {
+    key: "diagnostics", label: "Diagnostics", icon: Stethoscope, color: "#7c3aed",
+    columns: [
+      { key: "code", label: "Code" },
+      { key: "name", label: "Nom", required: true },
+      { key: "category", label: "Catégorie" },
+    ],
+    list: () => api.diagnosticsCatalog(),
+    listKey: "rows",
+    create: (b) => api.createDiagnostic(b),
+    update: (id, b) => api.updateDiagnostic(id, b),
+    remove: (id) => api.deleteDiagnostic(id),
+    searchFields: ["name", "code", "category"],
+  },
+  {
+    key: "visit_types", label: "Types de visite", icon: ClipboardList, color: "#0891b2",
+    columns: [
+      { key: "name", label: "Nom", required: true },
+      { key: "price", label: "Prix (DA)", type: "number" },
+    ],
+    list: () => api.visitTypes(),
+    listKey: "rows",
+    create: (b) => api.createVisitType(b),
+    update: (id, b) => api.updateVisitType(id, b),
+    remove: (id) => api.deleteVisitType(id),
+    searchFields: ["name"],
+  },
+  {
+    key: "tarifs", label: "Tarifs", icon: DollarSign, color: "#059669",
+    columns: [
+      { key: "label", label: "Libellé", required: true },
+      { key: "amount", label: "Montant (DA)", type: "number" },
+      { key: "category", label: "Catégorie" },
+    ],
+    list: () => api.tarifs(),
+    listKey: "rows",
+    create: (b) => api.createTarif(b),
+    update: (id, b) => api.updateTarif(id, b),
+    remove: (id) => api.deleteTarif(id),
+    searchFields: ["label", "category"],
+  },
+  {
+    key: "bilan_catalog", label: "Types bilan", icon: FlaskConical, color: "#d97706",
+    columns: [
+      { key: "name", label: "Nom", required: true },
+      { key: "category", label: "Catégorie" },
+    ],
+    list: () => api.bilanCatalog(),
+    listKey: "rows",
+    create: (b) => api.addBilanCatalog(b),
+    update: (id, b) => api.updateBilanCatalog(id, b),
+    remove: (id) => api.deleteBilanCatalog(id),
+    searchFields: ["name", "category"],
+  },
+  {
+    key: "examens", label: "Examens", icon: TestTube, color: "#be123c",
+    columns: [
+      { key: "name", label: "Nom", required: true },
+      { key: "category", label: "Catégorie" },
+    ],
+    list: () => api.bilanCatalog({ category: "Biologie" }),
+    listKey: "rows",
+    create: (b) => api.addBilanCatalog({ ...b, category: b.category || "Biologie" }),
+    update: (id, b) => api.updateBilanCatalog(id, b),
+    remove: (id) => api.deleteBilanCatalog(id),
+    searchFields: ["name", "category"],
+  },
+  {
+    key: "actes", label: "Actes", icon: FileCheck, color: "#4f46e5",
+    columns: [
+      { key: "code", label: "Code" },
+      { key: "name", label: "Nom", required: true },
+      { key: "price", label: "Prix (DA)", type: "number" },
+      { key: "category", label: "Catégorie" },
+    ],
+    list: () => api.actesCatalog(),
+    listKey: "rows",
+    create: (b) => api.createActe(b),
+    update: (id, b) => api.updateActe(id, b),
+    remove: (id) => api.deleteActe(id),
+    searchFields: ["name", "code", "category"],
+  },
+  {
+    key: "doctors", label: "Médecins", icon: UserRound, color: "#0f766e",
+    columns: [
+      { key: "name", label: "Nom", required: true },
+      { key: "speciality", label: "Spécialité" },
+      { key: "phone", label: "Téléphone" },
+      { key: "email", label: "Email" },
+      { key: "address", label: "Adresse" },
+      { key: "order_number", label: "N° Ordre" },
+    ],
+    list: () => api.doctors(0),
+    listKey: "rows",
+    create: (b) => api.createDoctor(b),
+    update: (id, b) => api.updateDoctor(id, b),
+    remove: (id) => api.deactivateDoctor(id),
+    searchFields: ["name", "speciality", "phone"],
+  },
+];
+
+function ReferentielsPanel() {
+  const [activeEntity, setActiveEntity] = useState(REF_ENTITIES[0].key);
+  const entity = REF_ENTITIES.find(e => e.key === activeEntity) || REF_ENTITIES[0];
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({});
+  const [creating, setCreating] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  async function loadRows() {
+    setLoading(true);
+    try {
+      const res = await entity.list();
+      setRows(res[entity.listKey] || res.rows || []);
+    } catch { setRows([]); }
+    setLoading(false);
+  }
+
+  useEffect(() => { loadRows(); setSearch(""); setEditingId(null); setCreating(false); }, [activeEntity]);
+
+  const filtered = rows.filter(r => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return entity.searchFields.some(f => String(r[f] || "").toLowerCase().includes(q));
+  });
+
+  function startEdit(row) {
+    setEditingId(row.id);
+    const f = {};
+    entity.columns.forEach(c => { f[c.key] = row[c.key] ?? ""; });
+    setForm(f);
+    setCreating(false);
+  }
+
+  function startCreate() {
+    setCreating(true);
+    setEditingId(null);
+    const f = {};
+    entity.columns.forEach(c => { f[c.key] = ""; });
+    setForm(f);
+  }
+
+  async function saveEdit() {
+    const required = entity.columns.filter(c => c.required);
+    for (const c of required) {
+      if (!String(form[c.key] || "").trim()) { setMsg(`${c.label} est requis`); setTimeout(() => setMsg(""), 2000); return; }
+    }
+    try {
+      if (creating) { await entity.create(form); setMsg("Ajouté"); }
+      else { await entity.update(editingId, form); setMsg("Mis à jour"); }
+      setEditingId(null); setCreating(false); loadRows();
+      setTimeout(() => setMsg(""), 2000);
+    } catch (e) { setMsg(e.message || "Erreur"); setTimeout(() => setMsg(""), 3000); }
+  }
+
+  async function handleDelete(id) {
+    if (!confirm("Supprimer cet élément ?")) return;
+    try {
+      await entity.remove(id);
+      setMsg("Supprimé"); loadRows();
+      if (editingId === id) { setEditingId(null); setCreating(false); }
+      setTimeout(() => setMsg(""), 2000);
+    } catch (e) { setMsg(e.message || "Erreur"); setTimeout(() => setMsg(""), 3000); }
+  }
+
+  const Icon = entity.icon;
+
+  return (
+    <div style={{ display: "flex", height: "100%", overflow: "hidden", background: "#f8fafc" }}>
+
+      {/* ─── Left sidebar: entity tabs ─── */}
+      <div style={{ width: 220, flexShrink: 0, background: "#fff", borderRight: "1px solid #eef2f7", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "18px 16px 12px", borderBottom: "1px solid #eef2f7" }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
+            <Database size={17} style={{ color: "#3b82f6" }} /> Référentiels
+          </div>
+          <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 4 }}>Gérez vos données de base</div>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
+          {REF_ENTITIES.map(ent => {
+            const EIcon = ent.icon;
+            const isActive = activeEntity === ent.key;
+            return (
+              <button key={ent.key} onClick={() => setActiveEntity(ent.key)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 12px",
+                  border: "none", borderRadius: 8, cursor: "pointer", textAlign: "left", marginBottom: 2,
+                  background: isActive ? `${ent.color}10` : "transparent",
+                  color: isActive ? ent.color : "#475569", fontWeight: isActive ? 600 : 500, fontSize: 13,
+                  transition: "all .15s",
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "#f1f5f9"; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}>
+                <EIcon size={15} />
+                {ent.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── Main content ─── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* Header bar */}
+        <div style={{
+          padding: "14px 24px", borderBottom: "1px solid #eef2f7", background: "#fff",
+          display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: `${entity.color}15`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Icon size={17} style={{ color: entity.color }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>{entity.label}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>{filtered.length} élément{filtered.length !== 1 ? "s" : ""}{search ? " (filtrés)" : ""}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {msg && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: msg.includes("Erreur") || msg.includes("requis") ? "#dc2626" : "#059669", background: msg.includes("Erreur") || msg.includes("requis") ? "#fef2f2" : "#f0fdf4", padding: "5px 12px", borderRadius: 6 }}>
+                {msg}
+              </span>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 11px", border: "1px solid #eef2f7", borderRadius: 8, background: "#fafbfc" }}>
+              <Search size={14} style={{ color: "#94a3b8" }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher…"
+                style={{ border: "none", background: "transparent", fontSize: 13, outline: "none", width: 160 }} />
+              {search && <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: 0 }}><X size={12} /></button>}
+            </div>
+            <button onClick={startCreate}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", border: "none", borderRadius: 8, background: entity.color, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              <Plus size={14} /> Ajouter
+            </button>
+          </div>
+        </div>
+
+        {/* Inline form (create/edit) */}
+        {(creating || editingId) && (
+          <div style={{ padding: "14px 24px", background: "#fffbeb", borderBottom: "1px solid #fde68a", display: "flex", alignItems: "flex-end", gap: 10, flexWrap: "wrap", flexShrink: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginRight: 6 }}>
+              {creating ? "Nouveau" : "Modifier"} :
+            </div>
+            {entity.columns.map(col => (
+              <div key={col.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <label style={{ fontSize: 10.5, fontWeight: 600, color: "#64748b" }}>{col.label}{col.required ? " *" : ""}</label>
+                <input
+                  value={form[col.key] || ""}
+                  onChange={e => setForm({ ...form, [col.key]: col.type === "number" ? e.target.value : e.target.value })}
+                  type={col.type === "number" ? "number" : "text"}
+                  style={{ padding: "6px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12.5, width: col.type === "number" ? 100 : 160, outline: "none" }}
+                />
+              </div>
+            ))}
+            <button onClick={saveEdit}
+              style={{ padding: "7px 16px", border: "none", borderRadius: 7, background: "#059669", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+              <Save size={13} /> Enregistrer
+            </button>
+            <button onClick={() => { setEditingId(null); setCreating(false); }}
+              style={{ padding: "7px 12px", border: "1px solid #e2e8f0", borderRadius: 7, background: "#fff", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
+              Annuler
+            </button>
+          </div>
+        )}
+
+        {/* Table */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "0" }}>
+          {loading ? (
+            <div style={{ textAlign: "center", padding: "60px 0", color: "#94a3b8" }}>
+              <Loader2 size={28} style={{ animation: "spin 1s linear infinite", opacity: 0.4 }} />
+              <div style={{ marginTop: 10, fontSize: 13 }}>Chargement…</div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 0", color: "#94a3b8" }}>
+              <Database size={36} style={{ opacity: 0.2, marginBottom: 10 }} />
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Aucun élément</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>{search ? "Essayez une autre recherche" : "Cliquez sur Ajouter pour créer"}</div>
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "2px solid #eef2f7" }}>
+                  {entity.columns.map(col => (
+                    <th key={col.key} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11.5, textTransform: "uppercase", letterSpacing: ".3px" }}>
+                      {col.label}
+                    </th>
+                  ))}
+                  <th style={{ padding: "10px 14px", textAlign: "right", fontWeight: 600, color: "#475569", fontSize: 11.5, width: 100 }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(row => (
+                  <tr key={row.id}
+                    style={{ borderBottom: "1px solid #f1f5f9", background: editingId === row.id ? "#fffbeb" : "#fff", transition: "background .1s" }}
+                    onMouseEnter={e => { if (editingId !== row.id) e.currentTarget.style.background = "#fafbfc"; }}
+                    onMouseLeave={e => { if (editingId !== row.id) e.currentTarget.style.background = editingId === row.id ? "#fffbeb" : "#fff"; }}>
+                    {entity.columns.map(col => (
+                      <td key={col.key} style={{ padding: "10px 14px", color: "#1e293b", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {col.type === "number" ? (Number(row[col.key]) || 0).toLocaleString("fr-DZ") : (row[col.key] || "—")}
+                      </td>
+                    ))}
+                    <td style={{ padding: "8px 14px", textAlign: "right" }}>
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
+                        <button onClick={() => startEdit(row)} title="Modifier"
+                          style={{ padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#3b82f6", display: "flex", alignItems: "center" }}
+                          onMouseEnter={e => e.currentTarget.style.background = "#eff6ff"}
+                          onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+                          <Pencil size={13} />
+                        </button>
+                        <button onClick={() => handleDelete(row.id)} title="Supprimer"
+                          style={{ padding: "5px 8px", border: "1px solid #fecaca", borderRadius: 6, background: "#fff", cursor: "pointer", color: "#dc2626", display: "flex", alignItems: "center" }}
+                          onMouseEnter={e => e.currentTarget.style.background = "#fef2f2"}
+                          onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Configuration Page: tabbed (Modèles + Référentiels + Paramètres) ────
+function ConfigurationPage({ specialityId, setSpecialityId, uploadMode, refreshUploadMode }) {
+  const [configTab, setConfigTab] = useState("templates");
+  const tabs = [
+    { key: "templates", label: "Modèles de documents", icon: FileText, color: "#3b82f6" },
+    { key: "referentiels", label: "Référentiels", icon: Database, color: "#7c3aed" },
+    { key: "parametres", label: "Paramètres", icon: Settings, color: "#0f766e" },
+  ];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#f1f5f9" }}>
+      {/* Tab bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 0, background: "#fff", borderBottom: "1px solid #eef2f7", flexShrink: 0, paddingLeft: 20 }}>
+        {tabs.map(t => {
+          const TIcon = t.icon;
+          const active = configTab === t.key;
+          return (
+            <button key={t.key} onClick={() => setConfigTab(t.key)}
+              style={{
+                display: "flex", alignItems: "center", gap: 7, padding: "13px 20px",
+                border: "none", background: "transparent", cursor: "pointer",
+                fontSize: 14, fontWeight: active ? 650 : 500,
+                color: active ? t.color : "#64748b",
+                borderBottom: active ? `2.5px solid ${t.color}` : "2.5px solid transparent",
+                marginBottom: -1, transition: "all .15s",
+              }}>
+              <TIcon size={16} />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+      {/* Content */}
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        {configTab === "templates" && <DocumentTemplatesPanel patient={null} />}
+        {configTab === "referentiels" && <ReferentielsPanel />}
+        {configTab === "parametres" && <ParametresConfigPanel specialityId={specialityId} uploadMode={uploadMode} refreshUploadMode={refreshUploadMode} />}
+      </div>
+    </div>
+  );
+}
+
+function ParametresConfigPanel({ specialityId, uploadMode, refreshUploadMode }) {
+  const [header, setHeader] = useState(() => { try { return JSON.parse(localStorage.getItem("ms_clinic_header") || "{}"); } catch { return {}; } });
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    api.doctorProfile().then((profile) => {
+      if (!profile) return;
+      setHeader((current) => {
+        const merged = {
+          doctor_name: current.doctor_name || profile.name || "",
+          specialty: current.specialty || profile.specialty || "",
+          order_number: current.order_number || profile.order_number || "",
+          clinic: current.clinic || profile.clinic_name || "",
+          city: current.city || profile.clinic_city || "",
+          phone: current.phone || profile.phone || "",
+          email: current.email || profile.email || "",
+          address: current.address || profile.address || "",
+          address_note: current.address_note || profile.address_note || "",
+          logo: current.logo || profile.logo_b64 || "",
+        };
+        localStorage.setItem("ms_clinic_header", JSON.stringify(merged));
+        return merged;
+      });
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        await Promise.all([
+          api.updateSetting("DOCTOR_NAME", header.doctor_name || ""),
+          api.updateSetting("DOCTOR_SPECIALTY", header.specialty || ""),
+          api.updateSetting("DOCTOR_ORDER_NUMBER", header.order_number || ""),
+          api.updateSetting("CLINIC_NAME", header.clinic || ""),
+          api.updateSetting("CLINIC_CITY", header.city || ""),
+          api.updateSetting("DOCTOR_PHONE", header.phone || ""),
+          api.updateSetting("DOCTOR_EMAIL", header.email || ""),
+          api.updateSetting("DOCTOR_ADDRESS", header.address || ""),
+          api.updateSetting("DOCTOR_ADDRESS_NOTE", header.address_note || ""),
+          api.updateSetting("DOCTOR_LOGO_B64", header.logo || ""),
+        ]);
+        setMsg("Configuration synchronisée avec les documents.");
+      } catch {
+        setMsg("Configuration enregistrée localement. Synchronisation serveur en attente.");
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [header]);
+
+  function saveH(key, val) {
+    const updated = { ...header, [key]: val };
+    setHeader(updated);
+    localStorage.setItem("ms_clinic_header", JSON.stringify(updated));
+  }
+  function handleLogo(e) {
+    const file = e.target.files?.[0]; if (!file) return;
+    const r = new FileReader(); r.onload = ev => { saveH("logo", ev.target.result); }; r.readAsDataURL(file);
+  }
+
+  return (
+    <div style={{ overflow: "auto", padding: "24px 32px", height: "100%" }}>
+      <section style={{ marginBottom: 20 }}>
+        <SettingsPanel uploadMode={uploadMode} onRefreshMode={refreshUploadMode} />
+      </section>
+
+      {/* Header / Footer Configuration */}
+      <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
+        <h3 style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
+          <Edit3 size={16} style={{ color: "#2563eb" }} /> En-tête et pied de page (Header / Footer)
+        </h3>
+        <p style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>Ces informations apparaissent sur toutes les ordonnances, bilans, courriers et documents imprimés.</p>
+
+        <div style={{ display: "flex", gap: 16, marginBottom: 16, alignItems: "center" }}>
+          <div style={{ width: 80, height: 80, border: "2px dashed #cbd5e1", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", overflow: "hidden", flexShrink: 0 }}>
+            {header.logo ? <img src={header.logo} alt="logo" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <Heart size={28} style={{ color: "#cbd5e1" }} />}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, fontSize: 11.5, fontWeight: 600, color: "#1d4ed8", cursor: "pointer" }}>
+              <Upload size={12} /> Choisir un logo
+              <input type="file" accept="image/*" onChange={handleLogo} style={{ display: "none" }} />
+            </label>
+            {header.logo && <button onClick={() => saveH("logo", "")} style={{ padding: "5px 10px", background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Retirer</button>}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          {[["doctor_name","Nom du médecin","Dr. Jean Dupont"],["specialty","Spécialité","Cardiologue"],["order_number","N° Ordre","22/620/13"],["clinic","Nom du cabinet","Cabinet..."],["phone","Téléphone","0555 12 34 56"],["email","Email","contact@cabinet.dz"],["city","Ville","Sidi Bel Abbès"],["address","Adresse complète","123 Rue..."]].map(([k, lbl, ph]) => (
+            <div key={k} style={k === "address" ? { gridColumn: "1 / -1" } : {}}>
+              <label style={{ fontSize: 11, color: "#64748b", display: "block", marginBottom: 3, fontWeight: 600 }}>{lbl}</label>
+              <input value={header[k] || ""} onChange={e => saveH(k, e.target.value)} placeholder={ph}
+                style={{ width: "100%", padding: "8px 11px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 12.5, boxSizing: "border-box", fontFamily: "inherit", outline: "none" }}
+                onFocus={e => { e.target.style.borderColor = "#2563eb"; }}
+                onBlur={e => { e.target.style.borderColor = "#e2e8f0"; }} />
+            </div>
+          ))}
+        </div>
+        {msg && <div style={{ marginTop: 10, fontSize: 12, color: "#059669", fontWeight: 600 }}>{msg}</div>}
+      </section>
+
+      {/* Footer info */}
+      <section style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
+        <h3 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Pied de page (Footer)</h3>
+        <p style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>Le footer est généré automatiquement à partir des champs ci-dessus : Téléphone, Email, Adresse, Ville.</p>
+        <div style={{ padding: "12px 16px", background: "#f8fafc", border: "1px solid #eef2f7", borderRadius: 8, fontSize: 12, color: "#475569", lineHeight: 1.6 }}>
+          {[header.phone && `☎ ${header.phone}`, header.email && `✉ ${header.email}`, (header.address || header.city) && `📍 ${[header.address, header.city].filter(Boolean).join(", ")}`].filter(Boolean).join("  |  ") || "Remplissez les champs ci-dessus pour générer le footer."}
+        </div>
+      </section>
+
+      {/* Speciality (read-only) */}
+      <SpecialitySettingsSection currentId={specialityId} />
+    </div>
+  );
+}
 
 function SpecialitySettingsSection({ currentId, onChange }) {
   // Speciality is locked after initial setup. Doctors choose during the
@@ -6669,7 +7624,8 @@ function BilanPanel({ patient }) {
 .hdr-left{width:38%}.hdr-center{width:24%;text-align:center;vertical-align:middle}.hdr-right{width:38%;text-align:right}
 .doc-name{font-size:11.5pt;font-weight:bold}.doc-spec{font-size:9pt;font-weight:bold}.doc-ordre{font-size:8pt;margin-top:2px}
 .rl{font-size:9pt;margin:1px 0}.sep{border:none;border-top:2px solid #000;margin:5px 0 8px}
-.body{min-height:130mm;line-height:1.55;font-size:10.5pt}.ftr{border-top:1px solid #000;padding-top:5px;font-size:8pt;text-align:center;margin-top:12px}
+.body{line-height:1.5;font-size:10.5pt}.body p{margin:0 0 3pt}.body ul,.body ol{padding-left:18px;margin:3pt 0}
+.ftr{border-top:1px solid #000;padding-top:5px;font-size:8pt;text-align:center;margin-top:8pt}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>
 <table class="hdr-tbl"><tr>
   <td class="hdr-left"><div class="doc-name">${docHeader.doctor_name || "Dr."}</div><div class="doc-spec">${docHeader.specialty || ""}</div>${docHeader.order_number ? `<div class="doc-ordre">N&deg; d'ordre : ${docHeader.order_number}</div>` : ""}</td>
@@ -6779,7 +7735,8 @@ function BilanPanel({ patient }) {
             </div>
 
             <div className="bilan-a4-wrap">
-              {/* Live A4 header preview */}
+             <div className="bilan-a5-page">
+              {/* Live A5 header preview */}
               <div className="bilan-a4-hdr">
                 <div className="bilan-a4-hdr__left">
                   <div className="bilan-a4-name">{docHeader.doctor_name || "Dr. Médecin"}</div>
@@ -6798,6 +7755,7 @@ function BilanPanel({ patient }) {
               </div>
               <div className="bilan-a4-sep" />
               <div ref={editorRef} className="bilan-a4-body" contentEditable suppressContentEditableWarning spellCheck={false} />
+             </div>
             </div>
           </>
         ) : (
@@ -6901,6 +7859,1052 @@ function PlusMenu({ activeTab, setActiveTab, groups, labelOf }) {
   );
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// ReglementPanel — patient payments / caisse view. Fetches real visits with
+// fee/paid/mode_paiement from /api/patients/{id}/payments.
+// ───────────────────────────────────────────────────────────────────────────
+function CaisseHistoryPanel({ patient }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!patient?.id) return;
+    setLoading(true); setError("");
+    api.patientPayments(patient.id)
+      .then((d) => setData(d))
+      .catch((e) => setError(`Impossible de charger les reglements: ${e.message}`))
+      .finally(() => setLoading(false));
+  }, [patient?.id]);
+
+  if (!patient?.id) return (
+    <div style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontStyle: "italic", background: "#fff", borderRadius: 12, border: "1px solid #eef2f7" }}>
+      Aucun patient selectionne.
+    </div>
+  );
+  if (loading) return <div style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}><Loader2 size={22} className="imp-spin" /></div>;
+  if (error) return <div style={{ padding: "14px 18px", background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 10 }}>{error}</div>;
+
+  const rows = data?.rows || [];
+  const totalFee = data?.total_fee || 0;
+  const totalPaid = data?.total_paid || 0;
+  const totalUnpaid = data?.total_unpaid || 0;
+
+  const fmt = (n) => `${(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DA`;
+  const statusBadge = (s) => {
+    const map = {
+      paid:    { label: "Paye",   color: "#065f46", bg: "#ecfdf5" },
+      partial: { label: "Partiel", color: "#92400e", bg: "#fffbeb" },
+      pending: { label: "Impaye", color: "#991b1b", bg: "#fef2f2" },
+    }[s] || { label: s || "-", color: "#475569", bg: "#f1f5f9" };
+    return <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 20, color: map.color, background: map.bg }}>{map.label}</span>;
+  };
+
+  return (
+    <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#0f172a" }}>Caisse — Historique des paiements</h2>
+        <div style={{ marginTop: 3, fontSize: 13, color: "#64748b" }}>
+          {patient.nom} {patient.prenom} · {rows.length} consultation{rows.length > 1 ? "s" : ""}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 16 }}>
+        <TotalCard label="Total honoraires" value={fmt(totalFee)} tone="blue" />
+        <TotalCard label="Total paye" value={fmt(totalPaid)} tone="green" />
+        <TotalCard label="Reste a payer" value={fmt(totalUnpaid)} tone={totalUnpaid > 0 ? "red" : "green"} />
+      </div>
+
+      {rows.length === 0 ? (
+        <div style={{ background: "#fff", border: "1px dashed #cbd5e1", borderRadius: 12, padding: "40px 20px", textAlign: "center" }}>
+          <CreditCard size={32} color="#cbd5e1" style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#475569" }}>Aucun reglement enregistre</div>
+        </div>
+      ) : (
+        <div style={{ background: "#fff", border: "1px solid #eef2f7", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 120px 100px 100px 100px 110px 100px", padding: "10px 16px", borderBottom: "1px solid #eef2f7", background: "#f8fafc", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px" }}>
+            <div>Date</div>
+            <div>Motif / Acte</div>
+            <div>Type</div>
+            <div style={{ textAlign: "right" }}>Honoraires</div>
+            <div style={{ textAlign: "right" }}>Paye</div>
+            <div style={{ textAlign: "right" }}>Reste</div>
+            <div>Mode</div>
+            <div style={{ textAlign: "center" }}>Statut</div>
+          </div>
+          {rows.map((r) => {
+            const fee = r.montant || r.visit_fee || 0;
+            const paid = r.paye || r.fee_paid || 0;
+            const remaining = Math.max(fee - paid, 0);
+            return (
+              <div key={r.id} style={{ display: "grid", gridTemplateColumns: "100px 1fr 120px 100px 100px 100px 110px 100px", padding: "11px 16px", borderBottom: "1px solid #f8fafc", fontSize: 13, alignItems: "center" }}>
+                <div style={{ color: "#475569" }}>{(r.date_visite || "").slice(0, 10)}</div>
+                <div style={{ color: "#0f172a", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.motif || r.acte || "Consultation"}</div>
+                <div style={{ color: "#64748b", fontSize: 12 }}>{r.type_acte || r.visit_type || "-"}</div>
+                <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{fmt(fee)}</div>
+                <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#059669" }}>{fmt(paid)}</div>
+                <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: remaining > 0 ? "#dc2626" : "#94a3b8", fontWeight: remaining > 0 ? 600 : 400 }}>{fmt(remaining)}</div>
+                <div style={{ color: "#475569", fontSize: 12 }}>{r.mode_paiement || "-"}</div>
+                <div style={{ textAlign: "center" }}>{statusBadge(r.statut || r.payment_status)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ marginTop: 12, fontSize: 11.5, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
+        <Info size={12} /> Historique complet de tous les paiements du patient.
+      </div>
+    </div>
+  );
+}
+
+function ReglementPanelV2({ patient }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [visitTypes, setVisitTypes] = useState([]);
+  const [editForm, setEditForm] = useState({ visit_type: "", visit_fee: "", fee_paid: "", mode_paiement: "" });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  function loadData() {
+    if (!patient?.id) return;
+    setLoading(true);
+    setError("");
+    api.patientPayments(patient.id)
+      .then((d) => {
+        setData(d);
+        const cv = d?.current_visit;
+        if (cv) setEditForm({
+          visit_type: cv.type_consultation || cv.visit_type || "",
+          visit_fee: String(cv.montant || cv.visit_fee || "0"),
+          fee_paid: String(cv.paye || cv.fee_paid || "0"),
+          mode_paiement: cv.mode_paiement || "",
+        });
+      })
+      .catch((e) => setError(`Impossible de charger: ${e.message}`))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { loadData(); }, [patient?.id]);
+  useEffect(() => { api.visitTypes().then(d => setVisitTypes(d.rows || [])).catch(() => {}); }, []);
+
+  if (!patient?.id) {
+    return (
+      <div style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontStyle: "italic", background: "#fff", borderRadius: 12, border: "1px solid #eef2f7" }}>
+        Aucun patient selectionne.
+      </div>
+    );
+  }
+  if (loading) return <div style={{ padding: 30, textAlign: "center", color: "#94a3b8" }}><Loader2 size={22} className="imp-spin" /></div>;
+  if (error) return <div style={{ padding: "14px 18px", background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 10 }}>{error}</div>;
+
+  const currentVisit = data?.current_visit || null;
+  const fmt = (n) => `${(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DA`;
+  const statusBadge = (s) => {
+    const map = {
+      paid: { label: "Paye", color: "#065f46", bg: "#ecfdf5" },
+      partial: { label: "Partiel", color: "#92400e", bg: "#fffbeb" },
+      pending: { label: "Impaye", color: "#991b1b", bg: "#fef2f2" },
+    }[s] || { label: s || "-", color: "#475569", bg: "#f1f5f9" };
+    return <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, color: map.color, background: map.bg }}>{map.label}</span>;
+  };
+
+  const feeParsed = parseFloat(editForm.visit_fee) || 0;
+  const paidParsed = parseFloat(editForm.fee_paid) || 0;
+  const reste = Math.max(feeParsed - paidParsed, 0);
+
+  async function savePayment() {
+    if (!currentVisit?.id) return;
+    setSaving(true);
+    setMsg("");
+    try {
+      await api.updateVisitPayment(currentVisit.id, {
+        visit_fee: feeParsed,
+        fee_paid: paidParsed,
+        mode_paiement: editForm.mode_paiement,
+        visit_type: editForm.visit_type,
+      });
+      setMsg("Enregistre");
+      loadData();
+      setTimeout(() => setMsg(""), 3000);
+    } catch (e) { setMsg(`Erreur: ${e.message}`); }
+    setSaving(false);
+  }
+
+  function onVisitTypeChange(val) {
+    setEditForm(f => {
+      const vt = visitTypes.find(t => t.name === val);
+      return { ...f, visit_type: val, visit_fee: vt?.price != null ? String(vt.price) : f.visit_fee };
+    });
+  }
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+      {!currentVisit ? (
+        <div style={{ background: "#fff", border: "1px dashed #cbd5e1", borderRadius: 10, padding: "30px 20px", textAlign: "center" }}>
+          <CreditCard size={28} color="#cbd5e1" style={{ marginBottom: 6 }} />
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Aucune visite trouvee</div>
+        </div>
+      ) : (
+        <section style={{ background: "#fff", border: "1px solid #eef2f7", borderRadius: 10, padding: "16px 20px" }}>
+          {/* All fields in a single row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Type de visite</label>
+              <select value={editForm.visit_type} onChange={(e) => onVisitTypeChange(e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, background: "#fafbfc", outline: "none" }}>
+                <option value="">—</option>
+                {visitTypes.map(vt => <option key={vt.id} value={vt.name}>{vt.name} {vt.price ? `(${vt.price})` : ""}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Tarif (DA)</label>
+              <input type="number" value={editForm.visit_fee} onChange={(e) => setEditForm(f => ({ ...f, visit_fee: e.target.value }))}
+                style={{ width: "100%", padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, background: "#fafbfc", outline: "none" }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Paye (DA)</label>
+              <input type="number" value={editForm.fee_paid} onChange={(e) => setEditForm(f => ({ ...f, fee_paid: e.target.value }))}
+                style={{ width: "100%", padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, background: "#fafbfc", outline: "none" }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Reste</label>
+              <div style={{ padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, background: "#f8fafc", fontWeight: 700, color: reste > 0 ? "#dc2626" : "#059669" }}>
+                {fmt(reste)}
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Mode paiement</label>
+              <select value={editForm.mode_paiement} onChange={(e) => setEditForm(f => ({ ...f, mode_paiement: e.target.value }))}
+                style={{ width: "100%", padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 12, background: "#fafbfc", outline: "none" }}>
+                <option value="">—</option>
+                {["Especes", "Cheque", "Virement", "Carte", "Gratuit"].map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+          {/* Actions in a single row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={savePayment} disabled={saving}
+              style={{ padding: "7px 16px", border: "none", borderRadius: 7, fontSize: 12, fontWeight: 700, background: saving ? "#94a3b8" : "#2563eb", color: "#fff", cursor: saving ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+              <Save size={12} /> {saving ? "..." : "Enregistrer"}
+            </button>
+            <button onClick={() => setEditForm(f => ({ ...f, fee_paid: f.visit_fee }))}
+              style={{ padding: "7px 14px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 12, fontWeight: 600, background: "#fff", color: "#059669", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+              <CheckCircle size={12} /> Marquer paye
+            </button>
+            {statusBadge(currentVisit.statut)}
+            {msg && <span style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 5, color: msg.startsWith("Erreur") ? "#dc2626" : "#059669", background: msg.startsWith("Erreur") ? "#fef2f2" : "#f0fdf4" }}>{msg}</span>}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function TotalCard({ label, value, tone }) {
+  const tones = {
+    blue:  { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+    green: { bg: "#ecfdf5", color: "#065f46", border: "#a7f3d0" },
+    red:   { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
+  }[tone] || { bg: "#f8fafc", color: "#0f172a", border: "#eef2f7" };
+  return (
+    <div style={{ background: tones.bg, border: `1px solid ${tones.border}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: tones.color, textTransform: "uppercase", letterSpacing: ".4px" }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontVariantNumeric: "tabular-nums", marginTop: 4 }}>{value}</div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// OrdonnancePreviewPanel — READ-ONLY view of all prescriptions for a patient.
+// Editing happens in Configuration → Modèles de documents.
+// ───────────────────────────────────────────────────────────────────────────
+function OrdonnancePreviewPanel({ patient, detail, onNav }) {
+  const [openId, setOpenId] = useState(null);
+  const [itemsCache, setItemsCache] = useState({});
+  const [loadingItems, setLoadingItems] = useState(false);
+
+  if (!patient?.id) {
+    return (
+      <div style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontStyle: "italic", background: "#fff", borderRadius: 12, border: "1px solid #eef2f7" }}>
+        Aucun patient sélectionné.
+      </div>
+    );
+  }
+
+  const prescriptions = detail?.prescriptions || [];
+
+  async function toggleOpen(id) {
+    if (openId === id) { setOpenId(null); return; }
+    setOpenId(id);
+    if (!itemsCache[id]) {
+      setLoadingItems(true);
+      try {
+        const res = await fetch(`${apiBase}/api/prescriptions/${id}/items`);
+        if (res.ok) {
+          const data = await res.json();
+          setItemsCache((cur) => ({ ...cur, [id]: data.items || [] }));
+        }
+      } catch { /* fall back to raw lines */ }
+      setLoadingItems(false);
+    }
+  }
+
+  function handlePrint(rxId) {
+    const rx = prescriptions.find((p) => p.id === rxId);
+    if (!rx) return;
+    const items = itemsCache[rxId] || [];
+    const win = window.open("", "_blank", "width=820,height=900");
+    if (!win) return;
+    const dateStr = (rx.created_at || "").slice(0, 10);
+    const itemsHtml = items.length
+      ? `<ol>${items.map((it) => `<li><strong>${it.medicine_name || ""}</strong>${it.dosage ? " " + it.dosage : ""}${it.frequency ? " — " + it.frequency : ""}${it.duration ? " (" + it.duration + ")" : ""}${it.instructions ? "<br/><em>" + it.instructions + "</em>" : ""}</li>`).join("")}</ol>`
+      : `<pre style="white-space:pre-wrap;font-family:inherit">${(rx.lines || "").replace(/[<>]/g, "")}</pre>`;
+    win.document.write(`<!doctype html><html><head><title>Ordonnance ${dateStr}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#0f172a;max-width:680px;margin:auto}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;color:#64748b;font-weight:500;margin:0 0 18px}ol{padding-left:20px;line-height:1.7}li{margin-bottom:10px}.footer{margin-top:40px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:12px;color:#64748b;display:flex;justify-content:space-between}</style></head><body><h1>Ordonnance médicale</h1><h2>${patient.nom || ""} ${patient.prenom || ""} · ${patient.age || "?"} ans · ${dateStr}</h2>${itemsHtml}<div class="footer"><span>Signature</span><span>${dateStr}</span></div><script>window.print();</script></body></html>`);
+    win.document.close();
+  }
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#0f172a", letterSpacing: "-0.01em" }}>
+            Ordonnances · Aperçu
+          </h2>
+          <div style={{ marginTop: 3, fontSize: 13, color: "#64748b" }}>
+            Historique des prescriptions · {patient.nom} {patient.prenom} · {prescriptions.length} ordonnance{prescriptions.length > 1 ? "s" : ""}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ fontSize: 11.5, color: "#0c4a6e", background: "#e0f2fe", padding: "6px 11px", borderRadius: 6, display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #bae6fd" }}>
+            <Eye size={12} /> Aperçu lecture seule
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b" }} title="Modifier les modèles dans Configuration">
+            Édition → <strong>Quitter dossier</strong> → <strong>Configuration</strong>
+          </div>
+        </div>
+      </div>
+
+      {prescriptions.length === 0 ? (
+        <div style={{ padding: "40px 20px", textAlign: "center", background: "#fff", border: "1px dashed #cbd5e1", borderRadius: 12 }}>
+          <Pill size={32} color="#cbd5e1" style={{ marginBottom: 10 }} />
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#475569", marginBottom: 4 }}>Aucune ordonnance enregistrée</div>
+          <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Les ordonnances créées pendant les visites apparaîtront ici.</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {prescriptions.map((rx) => {
+            const isOpen = openId === rx.id;
+            const date = (rx.created_at || "").slice(0, 10);
+            const time = (rx.created_at || "").slice(11, 16);
+            const items = itemsCache[rx.id] || [];
+            const rawLines = (rx.lines || "").split("\n").filter(Boolean);
+            const previewCount = items.length || rawLines.length;
+            return (
+              <article key={rx.id} style={{ background: "#fff", border: "1px solid #eef2f7", borderRadius: 12, overflow: "hidden" }}>
+                <header onClick={() => toggleOpen(rx.id)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 18px", cursor: "pointer", background: isOpen ? "#f8fafc" : "#fff", borderBottom: isOpen ? "1px solid #eef2f7" : "none" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 8, background: "#fef3c7", color: "#b45309", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Pill size={17} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Ordonnance #{rx.id}</div>
+                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                        {date} {time && `· ${time}`} · {previewCount} ligne{previewCount > 1 ? "s" : ""}
+                        {rx.doctor_validated ? <span style={{ marginLeft: 8, color: "#059669", fontWeight: 600 }}>✓ Validée</span> : null}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button onClick={(e) => { e.stopPropagation(); handlePrint(rx.id); }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 11px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, fontSize: 11.5, cursor: "pointer" }}>
+                      <FileText size={12} /> Imprimer
+                    </button>
+                    <ChevronRight size={16} style={{ color: "#94a3b8", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+                  </div>
+                </header>
+                {isOpen && (
+                  <div style={{ padding: "14px 18px" }}>
+                    {loadingItems && !itemsCache[rx.id] ? (
+                      <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Chargement des médicaments…</div>
+                    ) : items.length > 0 ? (
+                      <ol style={{ paddingLeft: 22, margin: 0, lineHeight: 1.7 }}>
+                        {items.map((it) => (
+                          <li key={it.id} style={{ marginBottom: 8 }}>
+                            <strong style={{ color: "#0f172a" }}>{it.medicine_name}</strong>
+                            {it.dosage ? <span style={{ color: "#475569" }}> · {it.dosage}</span> : null}
+                            {it.frequency ? <span style={{ color: "#475569" }}> · {it.frequency}</span> : null}
+                            {it.duration ? <span style={{ color: "#64748b" }}> · ({it.duration})</span> : null}
+                            {it.dci ? <span style={{ color: "#94a3b8", fontSize: 11.5 }}> — {it.dci}</span> : null}
+                            {it.instructions ? <div style={{ fontSize: 12, color: "#64748b", fontStyle: "italic", marginTop: 2 }}>{it.instructions}</div> : null}
+                          </li>
+                        ))}
+                      </ol>
+                    ) : rawLines.length > 0 ? (
+                      <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: 13.5, color: "#0f172a", margin: 0, lineHeight: 1.6 }}>
+                        {rx.lines}
+                      </pre>
+                    ) : (
+                      <div style={{ fontSize: 12.5, color: "#94a3b8", fontStyle: "italic" }}>Ordonnance vide.</div>
+                    )}
+                    {rx.consultation_summary && (
+                      <div style={{ marginTop: 12, padding: "10px 12px", background: "#f8fafc", borderLeft: "3px solid #3b82f6", borderRadius: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
+                        <strong style={{ color: "#0f172a", display: "block", marginBottom: 3 }}>Résumé de consultation</strong>
+                        {rx.consultation_summary}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// OrdonnanceWriterPanel — Prescription builder with DB med search, auto-fill,
+// manual entry, live A4 preview, AI safety check, and print/PDF.
+// ───────────────────────────────────────────────────────────────────────────
+function OrdonnanceWriterPanel({ patient, detail, onRefreshPatient }) {
+  const [items, setItems] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [showManual, setShowManual] = useState(false);
+  const [manual, setManual] = useState({ medicine_name: "", dosage: "", frequency: "", duration: "", instructions: "", quantity: "" });
+  const [aiWarnings, setAiWarnings] = useState([]);
+  const [aiChecking, setAiChecking] = useState(false);
+  const searchRef = useRef(null);
+  const debounceRef = useRef(null);
+  const aiRef = useRef(null);
+
+  useEffect(() => {
+    if (searchTerm.length < 2) { setSearchResults([]); return; }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await api.searchMedicines(searchTerm, 20);
+        setSearchResults(res.rows || []);
+      } catch { setSearchResults([]); }
+      setSearching(false);
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    clearTimeout(aiRef.current);
+    if (items.length === 0 || !patient?.id) { setAiWarnings([]); return; }
+    aiRef.current = setTimeout(async () => {
+      setAiChecking(true);
+      try {
+        const meds = items.map(i => i.medicine_name).filter(Boolean);
+        const res = await api.safetyCheck({ patient_id: patient.id, medications: meds });
+        setAiWarnings(res.warnings || []);
+      } catch { setAiWarnings([]); }
+      setAiChecking(false);
+    }, 600);
+    return () => clearTimeout(aiRef.current);
+  }, [items, patient?.id]);
+
+  function addMedicine(med) {
+    setItems(prev => [...prev, {
+      id: Date.now() + Math.random(),
+      medicine_id: med.id,
+      medicine_name: med.brand_name || med.dci || "",
+      dci: med.dci || med.active_substance || "",
+      dosage: med.dosage_strength || "",
+      frequency: med.default_posology || "",
+      duration: "",
+      instructions: "",
+      quantity: med.default_quantity || "1",
+      is_free_text: false,
+    }]);
+    setSearchTerm("");
+    setSearchResults([]);
+    searchRef.current?.focus();
+  }
+
+  function addManualMed() {
+    if (!manual.medicine_name.trim()) return;
+    setItems(prev => [...prev, {
+      id: Date.now() + Math.random(),
+      medicine_id: null,
+      medicine_name: manual.medicine_name.trim(),
+      dci: "",
+      dosage: manual.dosage,
+      frequency: manual.frequency,
+      duration: manual.duration,
+      instructions: manual.instructions,
+      quantity: manual.quantity || "1",
+      is_free_text: false,
+    }]);
+    setManual({ medicine_name: "", dosage: "", frequency: "", duration: "", instructions: "", quantity: "" });
+    setShowManual(false);
+  }
+
+  function removeItem(id) { setItems(prev => prev.filter(i => i.id !== id)); }
+  function updateItem(id, key, val) { setItems(prev => prev.map(i => i.id === id ? { ...i, [key]: val } : i)); }
+
+  async function saveOrdonnance() {
+    if (!patient?.id || items.length === 0) return;
+    setSaving(true); setMsg("");
+    try {
+      const payload = {
+        patient_id: patient.id,
+        items: items.map(({ medicine_id, medicine_name, dci, dosage, frequency, duration, instructions, quantity, is_free_text }) => ({
+          medicine_id, medicine_name, dci, dosage, frequency, duration, instructions, quantity, is_free_text,
+        })),
+        doctor_validated: true,
+      };
+      const result = await api.createPrescriptionWorkflow(payload);
+      setMsg("Ordonnance enregistree");
+      setItems([]);
+      onRefreshPatient?.();
+      if (result.id) window.open(`${apiBase}/api/prescriptions/${result.id}/pdf`, "_blank");
+      setTimeout(() => setMsg(""), 4000);
+    } catch (e) { setMsg(`Erreur: ${e.message}`); }
+    setSaving(false);
+  }
+
+  function printPreview() {
+    const win = window.open("", "_blank", "width=820,height=900");
+    if (!win) return;
+    const dateStr = new Date().toLocaleDateString("fr-FR");
+    const linesHtml = items.map((it) => {
+      const parts = [`<strong>${it.medicine_name}</strong>`];
+      if (it.dosage) parts.push(it.dosage);
+      if (it.frequency) parts.push(it.frequency);
+      if (it.duration) parts.push(`pendant ${it.duration}`);
+      if (it.quantity) parts.push(`Qte: ${it.quantity}`);
+      let html = `<li style="margin-bottom:10px">${parts.join(" &mdash; ")}`;
+      if (it.instructions) html += `<br/><em style="color:#555">${it.instructions}</em>`;
+      html += `</li>`;
+      return html;
+    }).join("");
+    win.document.write(`<!doctype html><html><head><title>Ordonnance ${dateStr}</title><style>body{font-family:'Times New Roman',serif;padding:40px 50px;color:#000;max-width:700px;margin:auto}h1{font-size:20px;margin:0 0 4px;text-align:center}h2{font-size:13px;color:#333;font-weight:400;margin:0 0 20px;text-align:center}ol{padding-left:24px;line-height:2;font-size:14px}li{margin-bottom:8px}.footer{margin-top:50px;padding-top:14px;border-top:1px solid #999;font-size:11px;color:#666;display:flex;justify-content:space-between}</style></head><body><h1>ORDONNANCE MEDICALE</h1><h2>${patient.nom || ""} ${patient.prenom || ""} &middot; ${patient.age || "?"} ans &middot; ${dateStr}</h2><ol>${linesHtml}</ol><div class="footer"><span>Signature du medecin</span><span>${dateStr}</span></div><script>window.print();<\/script></body></html>`);
+    win.document.close();
+  }
+
+  if (!patient?.id) {
+    return (
+      <div style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontStyle: "italic", background: "#fff", borderRadius: 12, border: "1px solid #eef2f7" }}>
+        Aucun patient selectionne.
+      </div>
+    );
+  }
+
+  const dateStr = new Date().toLocaleDateString("fr-FR");
+  const dangerWarns = aiWarnings.filter(w => w.level === "danger");
+  const otherWarns = aiWarnings.filter(w => w.level !== "danger");
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, maxWidth: 1400, margin: "0 auto", alignItems: "start" }}>
+      {/* ═══ LEFT: Editor ═══ */}
+      <div>
+        {/* Search bar */}
+        <section style={{ background: "#fff", border: "1px solid #eef2f7", borderRadius: 12, padding: 14, marginBottom: 14, position: "relative" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ flex: 1, position: "relative" }}>
+              <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+              <input ref={searchRef} type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Rechercher medicament (nom, DCI)..."
+                style={{ width: "100%", padding: "9px 10px 9px 32px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12.5, outline: "none" }} />
+              {searching && <Loader2 size={13} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} className="imp-spin" />}
+            </div>
+            <button type="button" onClick={() => setShowManual(!showManual)}
+              style={{ padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 11.5, fontWeight: 600, background: showManual ? "#eff6ff" : "#fff", color: "#2563eb", cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>
+              <Plus size={12} /> Manuel
+            </button>
+          </div>
+          {searchResults.length > 0 && (
+            <div style={{ position: "absolute", left: 14, right: 14, top: "100%", zIndex: 100, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,.12)", maxHeight: 280, overflow: "auto", marginTop: 4 }}>
+              {searchResults.map((med) => (
+                <button key={med.id} type="button" onClick={() => addMedicine(med)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", border: "none", borderBottom: "1px solid #f8fafc", background: "transparent", cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#f0f7ff"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                  <Pill size={13} style={{ color: "#2563eb", flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#0f172a" }}>{med.brand_name || med.dci}</div>
+                    <div style={{ fontSize: 10.5, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {med.dci && med.dci !== med.brand_name ? `DCI: ${med.dci}` : ""}{med.dosage_strength ? ` · ${med.dosage_strength}` : ""}{med.form ? ` · ${med.form}` : ""}
+                    </div>
+                  </div>
+                  <Plus size={13} style={{ color: "#2563eb", flexShrink: 0 }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {showManual && (
+          <section style={{ background: "#fefce8", border: "1px solid #fde68a", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: "#92400e", marginBottom: 8 }}>Ajout manuel</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+              <input placeholder="Nom du medicament *" value={manual.medicine_name} onChange={(e) => setManual(f => ({ ...f, medicine_name: e.target.value }))} style={{ padding: "7px 9px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11.5, outline: "none" }} />
+              <input placeholder="Dosage" value={manual.dosage} onChange={(e) => setManual(f => ({ ...f, dosage: e.target.value }))} style={{ padding: "7px 9px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11.5, outline: "none" }} />
+              <input placeholder="Posologie" value={manual.frequency} onChange={(e) => setManual(f => ({ ...f, frequency: e.target.value }))} style={{ padding: "7px 9px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11.5, outline: "none" }} />
+              <input placeholder="Duree" value={manual.duration} onChange={(e) => setManual(f => ({ ...f, duration: e.target.value }))} style={{ padding: "7px 9px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11.5, outline: "none" }} />
+              <input placeholder="Qte / Boite" value={manual.quantity} onChange={(e) => setManual(f => ({ ...f, quantity: e.target.value }))} style={{ padding: "7px 9px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11.5, outline: "none" }} />
+              <input placeholder="Instructions" value={manual.instructions} onChange={(e) => setManual(f => ({ ...f, instructions: e.target.value }))} style={{ padding: "7px 9px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11.5, outline: "none" }} />
+            </div>
+            <button onClick={addManualMed} disabled={!manual.medicine_name.trim()} style={{ padding: "6px 12px", border: "none", borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: "#2563eb", color: "#fff", cursor: "pointer" }}>
+              Ajouter
+            </button>
+          </section>
+        )}
+
+        {/* Items list */}
+        <section style={{ background: "#fff", border: "1px solid #eef2f7", borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f7", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Medicaments ({items.length})</div>
+            {items.length > 0 && <button onClick={() => setItems([])} style={{ fontSize: 10.5, color: "#dc2626", background: "transparent", border: "none", cursor: "pointer", fontWeight: 600 }}>Tout supprimer</button>}
+          </div>
+          {items.length === 0 ? (
+            <div style={{ padding: "30px 16px", textAlign: "center", color: "#94a3b8" }}>
+              <Pill size={24} style={{ marginBottom: 6, color: "#cbd5e1" }} />
+              <div style={{ fontSize: 12, fontWeight: 500 }}>Aucun medicament ajoute</div>
+              <div style={{ fontSize: 11, marginTop: 3 }}>Recherchez et cliquez pour ajouter</div>
+            </div>
+          ) : (
+            <div>
+              {items.map((item, idx) => (
+                <div key={item.id} style={{ padding: "10px 14px", borderBottom: "1px solid #f8fafc", display: "grid", gridTemplateColumns: "26px 1fr auto", gap: 10, alignItems: "start" }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 6, background: "#eff6ff", color: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{idx + 1}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "#0f172a" }}>{item.medicine_name}</div>
+                    {item.dci && <div style={{ fontSize: 10, color: "#64748b" }}>DCI: {item.dci}</div>}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginTop: 6 }}>
+                      <input placeholder="Dosage" value={item.dosage} onChange={(e) => updateItem(item.id, "dosage", e.target.value)} style={{ padding: "5px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontSize: 11, outline: "none" }} />
+                      <input placeholder="Posologie" value={item.frequency} onChange={(e) => updateItem(item.id, "frequency", e.target.value)} style={{ padding: "5px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontSize: 11, outline: "none" }} />
+                      <input placeholder="Duree" value={item.duration} onChange={(e) => updateItem(item.id, "duration", e.target.value)} style={{ padding: "5px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontSize: 11, outline: "none" }} />
+                      <input placeholder="Qte" value={item.quantity} onChange={(e) => updateItem(item.id, "quantity", e.target.value)} style={{ padding: "5px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontSize: 11, outline: "none" }} />
+                      <input placeholder="Instructions" value={item.instructions} onChange={(e) => updateItem(item.id, "instructions", e.target.value)} style={{ padding: "5px 7px", border: "1px solid #e2e8f0", borderRadius: 5, fontSize: 11, outline: "none", gridColumn: "span 2" }} />
+                    </div>
+                  </div>
+                  <button onClick={() => removeItem(item.id)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#dc2626", padding: 2 }}><XCircle size={15} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* AI Safety Warnings */}
+        {(aiWarnings.length > 0 || aiChecking) && (
+          <section style={{ background: dangerWarns.length > 0 ? "#fef2f2" : "#fffbeb", border: `1px solid ${dangerWarns.length > 0 ? "#fecaca" : "#fde68a"}`, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <AlertTriangle size={14} style={{ color: dangerWarns.length > 0 ? "#dc2626" : "#d97706" }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: dangerWarns.length > 0 ? "#991b1b" : "#92400e" }}>
+                {aiChecking ? "Verification en cours..." : `AI Securite — ${aiWarnings.length} alerte${aiWarnings.length > 1 ? "s" : ""}`}
+              </span>
+            </div>
+            {dangerWarns.map((w, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "start", gap: 6, padding: "5px 0", borderBottom: "1px solid #fecaca" }}>
+                <XCircle size={13} style={{ color: "#dc2626", flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 11.5, color: "#991b1b", fontWeight: 600 }}>{w.message}</span>
+              </div>
+            ))}
+            {otherWarns.map((w, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "start", gap: 6, padding: "5px 0" }}>
+                <AlertTriangle size={12} style={{ color: "#d97706", flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 11, color: "#92400e" }}>{w.message}</span>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={saveOrdonnance} disabled={saving || items.length === 0}
+            style={{ padding: "9px 18px", border: "none", borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: saving || items.length === 0 ? "#94a3b8" : "#2563eb", color: "#fff", cursor: saving || items.length === 0 ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+            <Save size={13} /> {saving ? "Enregistrement..." : "Enregistrer & PDF"}
+          </button>
+          <button onClick={printPreview} disabled={items.length === 0}
+            style={{ padding: "9px 14px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: "#fff", color: "#0f172a", cursor: items.length === 0 ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+            <Printer size={13} /> Imprimer
+          </button>
+          {msg && <span style={{ fontSize: 11.5, fontWeight: 600, padding: "4px 10px", borderRadius: 5, color: msg.startsWith("Erreur") ? "#dc2626" : "#059669", background: msg.startsWith("Erreur") ? "#fef2f2" : "#f0fdf4" }}>{msg}</span>}
+        </div>
+      </div>
+
+      {/* ═══ RIGHT: Live A4 Preview ═══ */}
+      <div style={{ background: "#e5e7eb", borderRadius: 12, padding: 20, minHeight: 500 }}>
+        <div style={{ background: "#fff", borderRadius: 4, boxShadow: "0 2px 12px rgba(0,0,0,.08)", padding: "40px 36px", minHeight: 460, fontFamily: "'Times New Roman', 'Georgia', serif", color: "#000", position: "relative" }}>
+          {/* A4 Header */}
+          <div style={{ textAlign: "center", marginBottom: 24, borderBottom: "2px solid #000", paddingBottom: 14 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>ORDONNANCE MEDICALE</div>
+            <div style={{ fontSize: 12, marginTop: 6, color: "#333" }}>
+              Patient : <strong>{patient.nom || ""} {patient.prenom || ""}</strong> · {patient.age || "?"} ans · {dateStr}
+            </div>
+          </div>
+
+          {/* Prescription lines */}
+          {items.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "60px 0", color: "#aaa", fontStyle: "italic", fontSize: 14, fontFamily: "Arial, sans-serif" }}>
+              Les medicaments ajoutes apparaitront ici en temps reel...
+            </div>
+          ) : (
+            <ol style={{ paddingLeft: 22, margin: 0, lineHeight: 2, fontSize: 13.5 }}>
+              {items.map((it, idx) => (
+                <li key={it.id} style={{ marginBottom: 8 }}>
+                  <strong>{it.medicine_name}</strong>
+                  {it.dosage ? ` ${it.dosage}` : ""}
+                  {it.frequency ? ` — ${it.frequency}` : ""}
+                  {it.duration ? ` (${it.duration})` : ""}
+                  {it.quantity ? ` · Qte: ${it.quantity}` : ""}
+                  {it.instructions ? <div style={{ fontSize: 11.5, color: "#555", fontStyle: "italic", marginTop: 1 }}>{it.instructions}</div> : null}
+                </li>
+              ))}
+            </ol>
+          )}
+
+          {/* A4 Footer */}
+          <div style={{ position: "absolute", bottom: 36, left: 36, right: 36, borderTop: "1px solid #999", paddingTop: 10, display: "flex", justifyContent: "space-between", fontSize: 11, color: "#666" }}>
+            <span>Signature du medecin</span>
+            <span>{dateStr}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// AntecedentsContentPanel — full antécédents view (medical history, allergies,
+// chronic conditions, surgical/familial/gyneco, lifestyle). Inline editable.
+// ───────────────────────────────────────────────────────────────────────────
+function AntecedentsContentPanel({ patient, form, setForm, saving, onSave }) {
+  const [editing, setEditing] = useState(false);
+
+  if (!patient?.id) {
+    return (
+      <div style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontStyle: "italic", background: "#fff", borderRadius: 12, border: "1px solid #eef2f7" }}>
+        Aucun patient sélectionné.
+      </div>
+    );
+  }
+
+  const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const v = (key) => (editing ? (form[key] ?? "") : (patient[key] ?? form[key] ?? ""));
+  const display = (val) => {
+    const s = String(val || "").trim();
+    return s || <span style={{ color: "#cbd5e1", fontStyle: "italic", fontSize: 13 }}>Non renseigné</span>;
+  };
+
+  const sections = [
+    {
+      title: "Antecedents medicaux",
+      color: "#3b82f6",
+      cols: 2,
+      fields: [
+        { key: "maladies", label: "Maladies chroniques", placeholder: "HTA, diabete, dyslipidemie...", rows: 3 },
+        { key: "antecedents", label: "Antecedents medicaux generaux", placeholder: "Pathologies passees, hospitalisations...", rows: 3 },
+        { key: "antecedents_chirurgicaux", label: "Antecedents chirurgicaux", placeholder: "Interventions, dates, indications...", rows: 2 },
+        { key: "antecedents_familiaux", label: "Antecedents familiaux", placeholder: "Maladies cardio, cancers, diabete familial...", rows: 2 },
+        { key: "antecedents_gyneco", label: "Antecedents gyneco-obstetricaux", placeholder: "Grossesses, menopause, gestes...", rows: 2 },
+        { key: "autres_antecedents", label: "Autres antecedents", placeholder: "Tout autre element pertinent", rows: 2 },
+        { key: "notes_importantes", label: "Notes importantes / alertes", placeholder: "A signaler systematiquement avant prescription", rows: 2 },
+      ],
+    },
+  ];
+
+  return (
+    <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#0f172a", letterSpacing: "-0.01em" }}>
+            Antécédents du patient
+          </h2>
+          <div style={{ marginTop: 3, fontSize: 13, color: "#64748b" }}>
+            Historique médical complet · {patient.prenom} {patient.nom}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {!editing ? (
+            <button onClick={() => setEditing(true)}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+              <Edit3 size={14} /> Modifier
+            </button>
+          ) : (
+            <>
+              <button onClick={() => setEditing(false)} disabled={saving}
+                style={{ padding: "9px 16px", background: "#fff", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                Annuler
+              </button>
+              <button onClick={async () => { await onSave?.(); setEditing(false); }} disabled={saving}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 16px", background: "#059669", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                <Save size={14} /> {saving ? "Enregistrement…" : "Enregistrer"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
+        {sections.map((sec) => (
+          <section key={sec.title} style={{ background: "#fff", border: "1px solid #eef2f7", borderRadius: 12, overflow: "hidden" }}>
+            <header style={{ padding: "12px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 10, background: `${sec.color}08` }}>
+              <span style={{ width: 6, height: 18, background: sec.color, borderRadius: 3 }} />
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{sec.title}</h3>
+            </header>
+            <div style={{ padding: "16px 18px", display: "grid", gridTemplateColumns: `repeat(${sec.cols || 1}, 1fr)`, gap: 14 }}>
+              {sec.fields.map((f) => (
+                <div key={f.key}>
+                  <label style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 6 }}>
+                    {f.label}
+                  </label>
+                  {editing ? (
+                    f.rows > 1 ? (
+                      <textarea value={v(f.key)} placeholder={f.placeholder}
+                        onChange={(e) => update(f.key, e.target.value)}
+                        rows={f.rows}
+                        style={{ width: "100%", padding: "9px 11px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13.5, fontFamily: "inherit", resize: "vertical", lineHeight: 1.5 }} />
+                    ) : (
+                      <input value={v(f.key)} placeholder={f.placeholder}
+                        onChange={(e) => update(f.key, e.target.value)}
+                        style={{ width: "100%", padding: "9px 11px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13.5 }} />
+                    )
+                  ) : (
+                    <div style={{ fontSize: 13.5, color: "#0f172a", whiteSpace: "pre-wrap", lineHeight: 1.55, minHeight: 20 }}>
+                      {display(v(f.key))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// PrintableFichePanel — clean printable patient sheet (état civil + résumé).
+// ───────────────────────────────────────────────────────────────────────────
+function PrintableFichePanel({ patient, detail }) {
+  if (!patient) {
+    return <div style={{ padding: 24, color: "#94a3b8", fontStyle: "italic" }}>Aucun patient sélectionné.</div>;
+  }
+  const visits = detail?.visits || [];
+  const prescriptions = detail?.prescriptions || [];
+  const lastVisit = visits[0];
+
+  const handlePrint = () => window.print();
+
+  const COL = { ink: "#0f172a", muted: "#64748b", line: "#e5e7eb" };
+  const labelStyle = { color: COL.muted, fontWeight: 500, fontSize: 12.5 };
+  const valueStyle = { color: COL.ink, fontWeight: 600, fontSize: 13.5 };
+  const fieldRow = (label, value) => (
+    <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 12, padding: "7px 0", borderBottom: `1px solid ${COL.line}` }}>
+      <span style={labelStyle}>{label}</span>
+      <span style={value ? valueStyle : { ...valueStyle, color: "#cbd5e1", fontStyle: "italic" }}>{value || "—"}</span>
+    </div>
+  );
+
+  return (
+    <div className="printable-fiche">
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          .printable-fiche, .printable-fiche * { visibility: visible !important; }
+          .printable-fiche { position: absolute; left: 0; top: 0; width: 100%; padding: 24px !important; }
+          .fiche-no-print { display: none !important; }
+        }
+      `}</style>
+
+      <div className="fiche-no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: COL.ink }}>Fiche Patient</h2>
+          <div style={{ marginTop: 3, fontSize: 13, color: COL.muted }}>Résumé imprimable du dossier</div>
+        </div>
+        <button onClick={handlePrint} style={{ padding: "9px 18px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 9, fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+          🖨 Imprimer
+        </button>
+      </div>
+
+      <div style={{ background: "#fff", border: `1px solid ${COL.line}`, borderRadius: 14, padding: 24 }}>
+        <div style={{ borderBottom: `2px solid ${COL.ink}`, paddingBottom: 12, marginBottom: 18 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: COL.ink }}>
+            {[patient.nom, patient.prenom].filter(Boolean).join(" ") || "Patient"}
+          </div>
+          <div style={{ fontSize: 12, color: COL.muted, marginTop: 4 }}>
+            Code: {patient.code || "—"} · {patient.sexe || "—"} · {patient.age ? `${patient.age} ans` : "—"}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: COL.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>État civil</div>
+            {fieldRow("Date naissance", patient.date_naissance)}
+            {fieldRow("Sexe", patient.sexe)}
+            {fieldRow("Groupe sanguin", patient.groupe_sanguin)}
+            {fieldRow("Situation", patient.situation_familiale)}
+            {fieldRow("Profession", patient.profession)}
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: COL.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>Coordonnées</div>
+            {fieldRow("Téléphone", patient.telephone)}
+            {fieldRow("Adresse", patient.adresse)}
+            {fieldRow("Orienté par", patient.oriente_par)}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: COL.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>Antécédents médicaux</div>
+          <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: 8, fontSize: 13.5, color: COL.ink, whiteSpace: "pre-wrap", minHeight: 40 }}>
+            {patient.antecedents || patient.maladies || "Aucun antécédent renseigné"}
+          </div>
+        </div>
+
+        {patient.notes_importantes && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: COL.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>Notes importantes</div>
+            <div style={{ padding: "10px 12px", background: "#fffbeb", borderRadius: 8, fontSize: 13.5, color: COL.ink, whiteSpace: "pre-wrap", border: "1px solid #fde68a" }}>
+              {patient.notes_importantes}
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          <div style={{ padding: "12px 14px", background: "#eff6ff", borderRadius: 10, textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#3b82f6" }}>{visits.length}</div>
+            <div style={{ fontSize: 11.5, color: COL.muted, fontWeight: 500 }}>Visites</div>
+          </div>
+          <div style={{ padding: "12px 14px", background: "#ecfdf5", borderRadius: 10, textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#10b981" }}>{prescriptions.length}</div>
+            <div style={{ fontSize: 11.5, color: COL.muted, fontWeight: 500 }}>Ordonnances</div>
+          </div>
+          <div style={{ padding: "12px 14px", background: "#f5f3ff", borderRadius: 10, textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#8b5cf6" }}>{(detail?.documents || []).length}</div>
+            <div style={{ fontSize: 11.5, color: COL.muted, fontWeight: 500 }}>Documents</div>
+          </div>
+        </div>
+
+        {lastVisit && (
+          <div style={{ marginTop: 18 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: COL.muted, textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 8 }}>Dernière visite</div>
+            <div style={{ padding: "12px 14px", background: "#f8fafc", borderRadius: 8, fontSize: 13 }}>
+              <div style={{ fontWeight: 600, color: COL.ink, marginBottom: 4 }}>
+                {lastVisit.date_visite ? String(lastVisit.date_visite).slice(0, 10) : "—"}
+                {lastVisit.motif ? ` · ${lastVisit.motif}` : ""}
+              </div>
+              {lastVisit.diagnostics && <div style={{ color: COL.muted, lineHeight: 1.5 }}>{lastVisit.diagnostics}</div>}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Small helper panels used by PatientWorkstation embeddedPanels
+function VisitFeesSummary({ visits }) {
+  const total = visits.reduce((s, v) => s + (Number(v.visit_fee) || 0), 0);
+  const paid = visits.reduce((s, v) => s + (Number(v.fee_paid) || 0), 0);
+  const due = Math.max(total - paid, 0);
+  const fmt = (n) => Number(n || 0).toLocaleString();
+  return (
+    <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0f172a" }}>Caisse — Historique des règlements</h3>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <div style={{ padding: 14, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, textAlign: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#1e40af" }}>{fmt(total)} DA</div>
+          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: .4 }}>Total facturé</div>
+        </div>
+        <div style={{ padding: 14, background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, textAlign: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#059669" }}>{fmt(paid)} DA</div>
+          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: .4 }}>Total payé</div>
+        </div>
+        <div style={{ padding: 14, background: due > 0 ? "#fef2f2" : "#f8fafc", border: `1px solid ${due > 0 ? "#fecaca" : "#e5e7eb"}`, borderRadius: 10, textAlign: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: due > 0 ? "#dc2626" : "#64748b" }}>{fmt(due)} DA</div>
+          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: .4 }}>Solde dû</div>
+        </div>
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+        <thead>
+          <tr style={{ background: "#f1f5f9", color: "#64748b" }}>
+            <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600 }}>Date</th>
+            <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 600 }}>Type</th>
+            <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600 }}>Honoraire</th>
+            <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600 }}>Payé</th>
+            <th style={{ textAlign: "right", padding: "8px 12px", fontWeight: 600 }}>Reste</th>
+            <th style={{ textAlign: "center", padding: "8px 12px", fontWeight: 600 }}>Statut</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visits.length === 0 && <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontStyle: "italic" }}>Aucune visite</td></tr>}
+          {visits.map((v) => {
+            const reste = Math.max((Number(v.visit_fee) || 0) - (Number(v.fee_paid) || 0), 0);
+            const status = v.payment_status || "pending";
+            return (
+              <tr key={v.id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                <td style={{ padding: "8px 12px" }}>{String(v.date_visite || "").slice(0, 10)}</td>
+                <td style={{ padding: "8px 12px" }}>{v.visit_type || v.motif || "—"}</td>
+                <td style={{ padding: "8px 12px", textAlign: "right" }}>{fmt(v.visit_fee)}</td>
+                <td style={{ padding: "8px 12px", textAlign: "right", color: "#059669" }}>{fmt(v.fee_paid)}</td>
+                <td style={{ padding: "8px 12px", textAlign: "right", fontWeight: reste > 0 ? 700 : 500, color: reste > 0 ? "#dc2626" : "#64748b" }}>{fmt(reste)}</td>
+                <td style={{ padding: "8px 12px", textAlign: "center" }}>
+                  <span style={{
+                    display: "inline-block", padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600,
+                    background: status === "paid" ? "#ecfdf5" : status === "partial" ? "#fffbeb" : "#fef2f2",
+                    color: status === "paid" ? "#059669" : status === "partial" ? "#d97706" : "#dc2626",
+                  }}>{status === "paid" ? "Payé" : status === "partial" ? "Partiel" : "En attente"}</span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PatientQuickStats({ patient, detail }) {
+  const visits = detail?.visits || [];
+  const prescriptions = detail?.prescriptions || [];
+  const documents = detail?.documents || [];
+  const appointments = detail?.appointments || [];
+  const firstVisit = visits[visits.length - 1]?.date_visite;
+  const lastVisit = visits[0]?.date_visite;
+  const totalFee = visits.reduce((s, v) => s + (Number(v.visit_fee) || 0), 0);
+  const totalPaid = visits.reduce((s, v) => s + (Number(v.fee_paid) || 0), 0);
+  const cards = [
+    { label: "Visites", value: visits.length, color: "#2563eb", bg: "#eff6ff" },
+    { label: "Ordonnances", value: prescriptions.length, color: "#059669", bg: "#ecfdf5" },
+    { label: "Documents", value: documents.length, color: "#7c3aed", bg: "#f5f3ff" },
+    { label: "Rendez-vous", value: appointments.length, color: "#d97706", bg: "#fffbeb" },
+    { label: "Total facturé", value: `${totalFee.toLocaleString()} DA`, color: "#1e40af", bg: "#eff6ff" },
+    { label: "Total payé", value: `${totalPaid.toLocaleString()} DA`, color: "#059669", bg: "#ecfdf5" },
+  ];
+  return (
+    <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+      <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0f172a" }}>Statistiques du patient</h3>
+      <div style={{ fontSize: 12.5, color: "#64748b" }}>
+        Première visite : <strong style={{ color: "#0f172a" }}>{firstVisit ? String(firstVisit).slice(0, 10) : "—"}</strong> ·
+        &nbsp;Dernière visite : <strong style={{ color: "#0f172a" }}>{lastVisit ? String(lastVisit).slice(0, 10) : "—"}</strong>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        {cards.map((c) => (
+          <div key={c.label} style={{ padding: 16, background: c.bg, border: `1px solid ${c.color}20`, borderRadius: 10, textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: c.color }}>{c.value}</div>
+            <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, textTransform: "uppercase", letterSpacing: .4, marginTop: 4 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MedicalWorkspace({
   activeTab,
   setActiveTab,
@@ -6951,30 +8955,16 @@ function MedicalWorkspace({
     icon: TAB_ICONS[t.icon] || FileImage,
   }));
 
-  // ═══ Calm 5-tab nav + Plus dropdown ═══
-  // Primary tabs (always visible). "Ordonnance" maps to "diagnosis" (Diagnostic & Traitement panel which holds the prescription).
-  const PRIMARY = [
-    { id: "new-visit",  label: "Consultation" },
-    { id: "diagnosis",  label: "Diagnostic" },
-    { id: "docs",       label: "Documents" },
-    { id: "historique", label: "Historique" },
+  // ═══ Simple 5-tab nav for doctors ═══
+  // Always visible: Ordonnance · État civil · Antécédents · Fiche · Visite
+  const visiblePrimary = [
+    { id: "templates",   label: "Ordonnance" },
+    { id: "civil",       label: "État civil" },
+    { id: "antecedents", label: "Antécédents" },
+    { id: "fiche",       label: "Fiche Patient" },
+    { id: "new-visit",   label: "Visite" },
   ];
-  // Available tabs from the speciality config
-  const availableIds = new Set(allTabs.map(t => t.id));
-  const visiblePrimary = PRIMARY.filter(t => availableIds.has(t.id));
-
-  // Everything else goes in the Plus dropdown, grouped logically
-  const PLUS_GROUPS = [
-    { title: "Examens",   ids: ["ecg", "scores", "imaging", "bilan"] },
-    { title: "Cliniques", ids: ["profile", "vitals", "bmi"] },
-    { title: "Outils",    ids: ["specialty", "templates", "ai", "fiche", "followup"] },
-  ];
-  const primaryIds = new Set(visiblePrimary.map(t => t.id));
-  const labelOf = (id) => allTabs.find(t => t.id === id)?.label || id;
-  const plusItems = PLUS_GROUPS.map(g => ({
-    title: g.title,
-    items: g.ids.filter(id => availableIds.has(id) && !primaryIds.has(id)),
-  })).filter(g => g.items.length > 0);
+  const plusItems = [];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
@@ -7020,7 +9010,7 @@ function MedicalWorkspace({
           {activeTab === "imaging" && <ImagingLabsPanelV2 patient={patient} cardio={cardio} onSaveImaging={onSaveImaging} onSaveLabs={onSaveLabs} />}
           {activeTab === "diagnosis" && <DiagnosisTreatmentPanel patient={patient} cardio={cardio} medications={medications} onDiagnosis={onSaveDiagnosis} onDeleteDiagnosis={onDeleteDiagnosis} onSavePrescription={onSavePrescription} />}
           {activeTab === "followup" && <FollowupPanel patient={patient} cardio={cardio} appointments={appointments} onAutoFollowup={onAutoFollowup} onSaveAppointment={onSaveAppointment} />}
-          {activeTab === "fiche" && (
+          {activeTab === "civil" && (
             <CivilPanelCard
               form={patientForm}
               setForm={setPatientForm}
@@ -7032,13 +9022,26 @@ function MedicalWorkspace({
               onDelete={onDeletePatient}
             />
           )}
+          {activeTab === "antecedents" && (
+            <AntecedentsContentPanel
+              patient={patient}
+              form={patientForm}
+              setForm={setPatientForm}
+              saving={saving}
+              onSave={onSavePatient}
+            />
+          )}
+          {activeTab === "fiche" && (
+            <PrintableFichePanel patient={patient} detail={detail} />
+          )}
           {activeTab === "historique" && <Timeline detail={detail} />}
           {activeTab === "docs" && <DocumentsPanel patient={patient} detail={detail} onUpload={onUpload} onSaveNotes={onSaveDocumentNotes} uploadMode={uploadMode} />}
-          {activeTab === "templates" && <DocumentTemplatesPanel patient={patient} />}
+          {activeTab === "templates" && <OrdonnancePreviewPanel patient={patient} detail={detail} onNav={() => setActiveTab("settings")} />}
           {activeTab === "specialty" && <SpecialityFieldsPanel patient={patient} specialityConfig={specialityConfig} />}
           {activeTab === "medicines" && <MedicineDatabasePanel />}
           {activeTab === "bilan" && <BilanPanel patient={patient} />}
           {activeTab === "ai" && <AIPanel patient={patient} aiWarnings={aiWarnings} onCheck={onAiCheck} specialityConfig={specialityConfig} />}
+          {activeTab === "reglement" && <ReglementPanelV2 patient={patient} />}
           {activeTab === "settings" && (
             <div className="settings-workspace">
               <SpecialitySettingsSection
@@ -7766,7 +9769,7 @@ function PatientDirectory({
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {p.sexe === "F" ? "👩" : p.sexe === "M" ? "👨" : "👤"} {p.nom} {p.prenom}
+                          {p.sexe === "F" ? "👩" : p.sexe === "M" ? "👨" : "👤"} {correctName(p.nom, p.prenom).nom} {correctName(p.nom, p.prenom).prenom}
                         </span>
                         {risk && (
                           <span style={{ fontSize: 9.5, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: risk.bg, color: risk.color, whiteSpace: "nowrap" }}>
@@ -7913,7 +9916,8 @@ export default function App() {
   const [visit, setVisit] = useState(blankVisit);
   const [search, setSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState("patients");
+  const [patientSection, setPatientSection] = useState("dossier");
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState("new-visit");
   const [error, setError] = useState("");
@@ -8162,7 +10166,17 @@ export default function App() {
   }
   function openPatientWithTab(patientId, tabId) {
     openPatient(patientId);
-    if (tabId) setActiveTab(tabId);
+    if (!tabId) return;
+    const sectionMap = {
+      templates: "ordonnance",
+      template: "ordonnance",
+      docs: "internet",
+      settings: "dossier",
+      profile: "dossier",
+      reglement: "caisse",
+    };
+    setActiveTab(tabId);
+    if (sectionMap[tabId]) setPatientSection(sectionMap[tabId]);
   }
 
   useEffect(() => {
@@ -8234,7 +10248,10 @@ export default function App() {
     setSelectedId(null);
     setDetail(null);
     setPatientForm(blankPatient);
+    setVisit(blankVisit);
     setAiWarnings(null);
+    setPatientSection("dossier");
+    setActiveTab("profile");
     setPage("patients");
   }
 
@@ -8242,6 +10259,7 @@ export default function App() {
     setCreatingPatient(false);
     setPatientConflict(null);
     setSelectedId(patientId);
+    setPatientSection("dossier");
     setPage("patients");
     setActiveTab("profile");
   }
@@ -8252,7 +10270,9 @@ export default function App() {
     setSelectedId(null);
     setDetail(null);
     setPatientForm(blankPatient);
-    setPage("patients");
+    setVisit(blankVisit);
+    setPatientSection("dossier");
+    setPage("patients-list");
   }
 
   function handleNavClick(navId) {
@@ -8505,140 +10525,164 @@ export default function App() {
   const isRemote = uploadMode?.mode === "remote" && Boolean(uploadMode?.remote_url);
 
   return (
-    <main className={`app-shell ${navCollapsed ? "app-shell--collapsed" : ""}`}>
-      {/* ---- SIDEBAR ---- */}
-      <aside className="nav-sidebar">
-        <div className="brand">
-          <div className="brand-logo">
-            <img src="/medismart-logo.png" alt="MediSmart" />
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", fontFamily: "inherit" }}>
+
+      {/* ═══ TOP BAR ═══ */}
+      <header style={{ display: "flex", alignItems: "stretch", height: 58, flexShrink: 0, background: "#ffffff", borderBottom: "1px solid #dde3ef", boxShadow: "0 1px 4px rgba(0,0,0,.06)", zIndex: 200, position: "relative" }}>
+        {/* Brand — MediSmart Pro + The Doctor Edition (matches screenshot) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 18px", minWidth: 192, borderRight: "1px solid #dde3ef", flexShrink: 0 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #1d4ed8, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Heart size={15} color="#fff" fill="#fff" />
           </div>
-          <div className="brand-text">
-            <strong>MediSmart</strong>
-            <small>Medical Intelligence</small>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: "-.01em", lineHeight: 1.2 }}>MediSmart Pro</div>
+            <div style={{ fontSize: 9.5, color: "#64748b", fontWeight: 500 }}>The Doctor Edition</div>
           </div>
         </div>
-        
-        <nav>
-          {sidebarSections.map((section) => (
-            <div key={section.label} className="nav-group">
-              <div className="nav-group-title">{section.label}</div>
-              {section.items.map((item) => {
-                const Icon = item.icon;
-                const isActive = page === item.id;
-                return (
-                  <button 
-                    key={item.id} 
-                    className={`nav-item ${isActive ? "is-active" : ""}`}
-                    onClick={() => handleNavClick(item.id)}
-                  >
-                    <Icon size={20} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-
-        <div className="nav-footer">
-          <button className="nav-item nav-item--logout" onClick={() => { localStorage.removeItem("cardio-user"); setUser(null); }}>
-            <LogOut size={20} /> <span>Déconnexion</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* ---- TOPBAR ---- */}
-      <header className="topbar">
-        <button className="sidebar-toggle" onClick={() => setNavCollapsed(!navCollapsed)}>
-          <ChevronRight size={20} style={{ transform: navCollapsed ? "rotate(0deg)" : "rotate(180deg)", transition: "transform 0.3s" }} />
-        </button>
-
-        <div className="topbar-search">
-          <Search size={18} className="search-icon" />
-          <input
-            ref={searchRef}
-            value={search}
-            placeholder="Nom complet, prenom nom, telephone, code... ( / )"
-            onChange={(event) => setSearch(event.target.value)}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-          />
-          {search.trim() && (
-            <button className="topbar-search-clear" type="button" onMouseDown={(event) => { event.preventDefault(); setSearch(""); }}>
-              <X size={14} />
-            </button>
-          )}
-          
-          {searchFocused && search.trim() && (
-            <div className="search-dropdown">
-              <div className="search-dropdown-header">
-                <span>Resultats de recherche</span>
-                <small>{visibleSearchResults.length} trouve(s)</small>
-              </div>
-              {visibleSearchResults.map((patient) => (
-                <div
-                  key={patient.id}
-                  className="search-dropdown-item"
-                  onMouseDown={(e) => { e.preventDefault(); openPatient(patient.id); setSearch(""); setSearchFocused(false); }}
-                >
-                  <div className={`patient-avatar-mini ${patientGenderClass(patient)}`}>
-                    <GenderIcon patient={patient} size={16} />
-                  </div>
-                  <div className="patient-meta-mini">
-                    <strong>{patient.nom} {patient.prenom}</strong>
-                    <span>{patient.code || `ID ${patient.id}`} آ· {patient.age || "?"} ans آ· {patient.telephone || "Sans telephone"}</span>
-                  </div>
-                  <ChevronRight size={15} />
+        {/* Page tabs */}
+        <nav style={{ display: "flex", alignItems: "stretch", flex: 1, overflow: "hidden" }}>
+          {[
+            { id: "patients-list",     label: "LISTE DES PATIENTS",       sub: "Recherche & Gestion",   icon: Users },
+            { id: "patients-today",    label: "PATIENTS VUS AUJOURD'HUI", sub: "Liste & Encaissements", icon: Stethoscope },
+            { id: "appointments-page", label: "RENDEZ-VOUS",              sub: "Agenda & planning",     icon: CalendarDays },
+            { id: "settings-nav",      label: "CONFIGURATION",            sub: "Paramètres du système", icon: Settings },
+          ].map(({ id, label, sub, icon: Icon }) => {
+            const otherPages = ["patients-today","appointments-page","settings-nav","dashboard","analytics","finance-page","medicines-nav","ai-credits","import-legacy","patients-list"];
+            const isActive = page === id || (id === "patients-list" && page === "patients-list");
+            return (
+              <button key={id} onClick={() => handleNavClick(id)}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px", border: "none", background: "transparent", borderBottom: `3px solid ${isActive ? "#2563eb" : "transparent"}`, borderRight: "1px solid #f1f5f9", color: isActive ? "#1e40af" : "#64748b", cursor: "pointer", textAlign: "left", transition: "color .15s", flexShrink: 0 }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "#f8fafc"; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+              >
+                <Icon size={14} />
+                <div>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".35px", whiteSpace: "nowrap" }}>{label}</div>
+                  <div style={{ fontSize: 9, opacity: .65 }}>{sub}</div>
                 </div>
-              ))}
-              {visibleSearchResults.length === 0 && <div className="search-dropdown-empty">Aucun resultat trouve</div>}
-            </div>
-          )}
-        </div>
-
-        <div className="topbar-actions">
-          <button className="btn btn--primary" onClick={startNewPatient}>
-            <Plus size={18} />
-            <span>Nouveau Patient</span>
+              </button>
+            );
+          })}
+        </nav>
+        {/* Right: backup + logout */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 14px", borderLeft: "1px solid #dde3ef", flexShrink: 0, position: "relative" }}>
+          <button onClick={runBackup} title="Sauvegarde" style={{ display: "inline-flex", alignItems: "center", padding: "5px 9px", background: "none", border: "1px solid #e2e8f0", borderRadius: 6, color: "#64748b", cursor: "pointer", flexShrink: 0 }}>
+            <DatabaseBackup size={13} />
           </button>
-          <button className="btn btn--secondary" onClick={runBackup}>
-            <DatabaseBackup size={18} />
-            <span>Sauvegarde</span>
+          <button onClick={() => { localStorage.removeItem("cardio-user"); setUser(null); }} title="Deconnexion" style={{ padding: "5px 7px", background: "none", border: "1px solid #e2e8f0", borderRadius: 6, color: "#94a3b8", cursor: "pointer", lineHeight: 0 }}>
+            <LogOut size={13} />
           </button>
-          <span className={`topbar-mode-badge ${uploadMode?.mode === "remote" && uploadMode?.active_url?.startsWith("https://") ? "is-remote" : "is-local"}`}>
-            {uploadMode?.mode === "remote" && uploadMode?.active_url?.startsWith("https://") ? <Globe size={14} /> : <Wifi size={14} />}
-            {uploadMode?.mode === "remote" && uploadMode?.active_url?.startsWith("https://") ? "Internet" : "Local"}
-          </span>
-          
-          <div className="user-profile">
-            <div className="user-info">
-              <span className="user-name">Dr. {user.username}</span>
-              <span className="user-role">Cardiologue</span>
-            </div>
-            <div className="user-avatar">
-              {user.username?.charAt(0).toUpperCase() || "D"}
-            </div>
-          </div>
         </div>
       </header>
 
-      {/* ---- MAIN ---- */}
-      <div className="main-content">
-        {backupMessage && <div className="soft-ok topbar-feedback">{backupMessage}</div>}
-        {error && <div className="soft-error topbar-feedback">{error}</div>}
-        {autoSaveStatus && (
-          <div className="autosave-pill" style={{
-            position:"fixed", right:18, bottom:18, zIndex:9000,
-            background: autoSaveStatus === "saving" ? "#1d4ed8" : "#16a34a",
-            color:"#fff", padding:"7px 14px", borderRadius:999,
-            fontSize:12, fontWeight:600, boxShadow:"0 4px 12px rgba(0,0,0,.2)",
-            display:"flex", alignItems:"center", gap:6,
-          }}>
-            {autoSaveStatus === "saving" ? "Enregistrement…" : "✓ Enregistré"}
+      {/* ═══ BODY ═══ */}
+      <div style={{ flex: 1, display: "flex", minHeight: 0, overflow: "hidden" }}>
+        {/* Dark sidebar */}
+        <aside style={{ width: 162, flexShrink: 0, background: "#152347", display: "flex", flexDirection: "column", overflowY: "auto", overflowX: "hidden" }}>
+
+          {/* ── Compact Quitter dossier button (only in patient mode) ── */}
+          {selectedPatient && (
+            <div style={{ padding: "8px 10px", flexShrink: 0 }}>
+              <button onClick={() => { openPatientDirectory(); }}
+                style={{ width: "100%", padding: "6px 0", background: "rgba(239,68,68,.18)", border: "1px solid rgba(239,68,68,.35)", borderRadius: 6, color: "#fca5a5", fontSize: 10, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                <LogOut size={11} /> Quitter dossier
+              </button>
+            </div>
+          )}
+
+          {/* ── Nav items ── two distinct sidebars depending on context */}
+          {(() => {
+            const inPatientMode = Boolean(selectedId || creatingPatient);
+
+            // GENERAL SIDEBAR — Finance removed (all data on Analytics); Dashboard removed too
+            const generalNav = [
+              { label: "ANALYTICS",       sub: "Statistiques du cabinet", icon: BarChart3,       route: "analytics"     },
+              { label: "BASE MÉDICAMENTS",sub: "Référentiel produits",   icon: BookOpen,        route: "medicines-nav" },
+              { label: "AI & CRÉDITS",    sub: "IA et abonnement",       icon: Bot,             route: "ai-credits"    },
+              { label: "IMPORT DATABASE", sub: "Ancienne base SQL",      icon: Upload,          route: "import-legacy" },
+              { label: "CONFIGURATION",   sub: "Modèles & ordonnances",  icon: Settings,        route: "settings-nav"  },
+            ];
+
+            // PATIENT SIDEBAR — matches screenshot exactly (9 items, INTERNET included)
+            const patientNav = [
+              { label: "DOSSIER",      sub: "Fiche patient",            icon: FolderOpen,   psec: "dossier"     },
+              { label: "ORDONNANCE",   sub: "Gestion ordonnances",      icon: Pill,         psec: "ordonnance"  },
+              { label: "EXPLORATIONS", sub: "Examens & analyses",       icon: FlaskConical, psec: "explorations"},
+              { label: "COURRIERS",    sub: "Courriers médicaux",       icon: Send,         psec: "courriers"   },
+              { label: "HISTORIQUE",   sub: "Antécédents & historique", icon: Clock,        psec: "historique"  },
+              { label: "RENDEZ-VOUS",  sub: "Rendez-vous patient",      icon: CalendarDays, psec: "rendezvous"  },
+              { label: "CAISSE",       sub: "Gestion financière",       icon: CreditCard,   psec: "caisse"      },
+              { label: "INTERNET",     sub: "Ressources médicales",     icon: Globe,        psec: "internet"    },
+              { label: "STATISTIQUES", sub: "Rapports & statistiques",  icon: BarChart3,    psec: "stats"       },
+            ];
+
+            const items = inPatientMode ? patientNav : generalNav;
+
+            return items.map((item, idx) => {
+              if (item.section) {
+                return (
+                  <div key={`s-${idx}`} style={{ padding: "12px 12px 4px", fontSize: 8.5, fontWeight: 800, letterSpacing: ".7px", color: "rgba(255,255,255,.4)" }}>
+                    {item.section}
+                  </div>
+                );
+              }
+              const { label, sub, icon: Icon, route, psec } = item;
+              const isAct = inPatientMode ? patientSection === psec : page === route;
+              return (
+                <button key={`${idx}-${label}`}
+                  onClick={() => {
+                    if (inPatientMode) {
+                      setPatientSection(psec);
+                      setPage("patients");
+                    } else {
+                      handleNavClick(route);
+                    }
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 11px", width: "100%", border: "none", background: isAct ? "#2563eb" : "transparent", borderLeft: `3px solid ${isAct ? "#60a5fa" : "transparent"}`, color: isAct ? "#ffffff" : "#a5b4d0", cursor: "pointer", textAlign: "left", transition: "background .15s, color .15s" }}
+                  onMouseEnter={e => { if (!isAct) { e.currentTarget.style.background = "rgba(255,255,255,.08)"; e.currentTarget.style.color = "#fff"; } }}
+                  onMouseLeave={e => { if (!isAct) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#a5b4d0"; } }}
+                >
+                  <Icon size={15} style={{ flexShrink: 0 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".35px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+                    <div style={{ fontSize: 9, opacity: .65, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 1 }}>{sub}</div>
+                  </div>
+                </button>
+              );
+            });
+          })()}
+
+          <div style={{ marginTop: "auto", padding: "8px", borderTop: "1px solid rgba(255,255,255,.1)" }}>
+            <button onClick={() => { localStorage.removeItem("cardio-user"); setUser(null); }}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px 8px", background: "none", border: "1px solid rgba(255,255,255,.15)", borderRadius: 6, color: "#a5b4d0", fontSize: 10.5, cursor: "pointer", fontWeight: 600 }}>
+              <LogOut size={12} /> Déconnexion
+            </button>
           </div>
+        </aside>
+
+        {/* ── MAIN ── */}
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#f0f4f8", minWidth: 0 }}>
+          {backupMessage && <div className="soft-ok topbar-feedback">{backupMessage}</div>}
+          {error && <div className="soft-error topbar-feedback">{error}</div>}
+          {autoSaveStatus && (
+            <div style={{ position: "fixed", right: 18, bottom: 18, zIndex: 9000, background: autoSaveStatus === "saving" ? "#1d4ed8" : "#16a34a", color: "#fff", padding: "7px 14px", borderRadius: 999, fontSize: 12, fontWeight: 600, boxShadow: "0 4px 12px rgba(0,0,0,.2)", display: "flex", alignItems: "center", gap: 6 }}>
+              {autoSaveStatus === "saving" ? "Enregistrement…" : "✓ Enregistré"}
+            </div>
+          )}
+        {(page === "dashboard" || page === "analytics") && <AnalyticsHub dashboard={dashboard} onNav={handleNavClick} />}
+        {page === "appointments-page" && (
+          <AppointmentsPageV2
+            patients={patients}
+            onSaveAppointment={saveAppointment}
+            onOpenPatient={(id) => openPatient(id)}
+          />
         )}
-        {page === "dashboard" && <DashboardPageV2 dashboard={dashboard} onNav={handleNavClick} />}
-        {page === "appointments-page" && <AppointmentsPage patients={patients} onSaveAppointment={saveAppointment} />}
+        {page === "patients-today" && (
+          <TodayPatientsPage
+            onOpenPatient={(id) => openPatient(id)}
+            onOpenWithTab={openPatientWithTab}
+          />
+        )}
         {page === "finance-page" && <FinancePage />}
 
         {page === "medicines-nav" && (
@@ -8655,131 +10699,97 @@ export default function App() {
 
         {page === "ai-credits" && <AICreditsPage />}
 
+        {page === "doctors-page" && <DoctorsPage />}
+        {page === "diagnostic-page" && <DiagnosticPage />}
+
         {page === "import-legacy" && (
-          <div className="directory-page">
+          <div className="directory-page" style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>
             <ImportWizardPanel />
           </div>
         )}
 
         {page === "settings-nav" && (
-          <div className="directory-page settings-workspace">
-            <header className="directory-header">
-              <div className="directory-title">
-                <h1>Réglages du cabinet</h1>
-                <p>Spécialité, Cloudflare, Drive, IA, upload et paramètres avancés du médecin.</p>
-              </div>
-            </header>
-            <SpecialitySettingsSection
-              currentId={specialityId}
-              onChange={(spec) => setSpecialityId(spec)}
-            />
-            <SettingsPanel uploadMode={uploadMode} onRefreshMode={refreshUploadMode} />
-            <DoctorSettingsPanelV2 />
-          </div>
+          <ConfigurationPage
+            specialityId={specialityId}
+            setSpecialityId={setSpecialityId}
+            uploadMode={uploadMode}
+            refreshUploadMode={refreshUploadMode}
+          />
         )}
         
         {/* Patient Section: Toggle between Directory and Dossier */}
-        {(page === "patients" || (page !== "dashboard" && page !== "appointments-page" && page !== "finance-page" && page !== "medicines-nav" && page !== "ai-credits" && page !== "import-legacy" && page !== "settings-nav")) && (
-          <>
-            {creatingPatient ? (
-              <NewPatientWorkspace
-                form={patientForm}
-                setForm={setPatientForm}
-                onSave={savePatient}
-                onReset={startNewPatient}
-                onCancel={openPatientDirectory}
-                saving={saving}
-                duplicateMatches={duplicateMatches}
-                patientConflict={patientConflict}
-                onOpenExisting={openPatient}
-              />
-            ) : !selectedId ? (
-              <PatientDirectory
-                patients={patients}
-                total={patientTotal}
-                displayedTotal={patientTotal}
-                search={search}
-                setSearch={setSearch}
-                offset={patientOffset}
-                pageSize={DIRECTORY_PAGE_SIZE}
-                hasMore={patientHasMore}
-                onNext={nextPatientPage}
-                onPrev={prevPatientPage}
-                onOpen={openPatient}
-                onOpenWithTab={openPatientWithTab}
-                onNewPatient={startNewPatient}
-                fullname={fullname}
-              />
-            ) : (
-              <section style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "8px 14px", background: "#fff",
-                  borderBottom: "1px solid #e5e7eb",
-                }}>
-                  <button onClick={() => { openPatientDirectory(); setActiveTab("profile"); }}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      padding: "6px 12px", background: "#f1f5f9",
-                      border: "1px solid #e5e7eb", borderRadius: 7,
-                      fontSize: 12, fontWeight: 700, color: "#475569",
-                      cursor: "pointer",
-                    }}>
-                    <ChevronLeft size={14} /> Annuaire
-                  </button>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "#64748b" }}>
-                    <span>📁</span>
-                    <span style={{ fontWeight: 700, color: "#0f172a" }}>{fullname(selectedPatient)}</span>
-                  </div>
-                </div>
-
-                <div style={{ padding: "10px 14px 0", flexShrink: 0 }}>
-                  <PatientHeaderCard patient={selectedPatient} onTab={setActiveTab} onRiskScan={runRiskScan} />
-                </div>
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-                    <MedicalWorkspace
-                      activeTab={activeTab}
-                      setActiveTab={setActiveTab}
-                      specialityConfig={specialityConfig}
-                      patient={selectedPatient}
-                      detail={detail}
-                      onUpload={uploadDocument}
-                      onSaveDocumentNotes={saveDocumentNotes}
-                      onSavePrescription={savePrescription}
-                      medications={medications}
-                      aiWarnings={aiWarnings}
-                      onAiCheck={aiCheck}
-                      appointments={appointments}
-                      onSaveAppointment={saveAppointment}
-                      onSaveCardioProfile={saveCardioProfile}
-                      onSaveVitals={saveVitals}
-                      onSaveLabs={saveLabs}
-                      onSaveEcg={saveEcg}
-                      onSaveImaging={saveImaging}
-                      onSaveDiagnosis={saveDiagnosis}
-                      onDeleteDiagnosis={removeDiagnosis}
-                      onAutoFollowup={autoFollowup}
-                      uploadMode={uploadMode}
-                      onRefreshMode={refreshUploadMode}
-                      visit={visit}
-                      setVisit={setVisit}
-                      onSaveVisit={saveVisit}
-                      onDictate={dictateToVisit}
-                      patientForm={patientForm}
-                      setPatientForm={setPatientForm}
-                      onNewPatient={startNewPatient}
-                      onSavePatient={savePatient}
-                      onDeletePatient={deletePatient}
-                      saving={saving}
-                    />
-                  </div>
-                </div>
-              </section>
-            )}
-          </>
+        {/* Patient List Page (separate page via top nav) */}
+        {page === "patients-list" && (
+          <PatientsListPage
+            patients={patients}
+            total={patientTotal}
+            search={search}
+            setSearch={setSearch}
+            offset={patientOffset}
+            pageSize={DIRECTORY_PAGE_SIZE}
+            hasMore={patientHasMore}
+            onNext={nextPatientPage}
+            onPrev={prevPatientPage}
+            onOpen={openPatient}
+            onOpenWithTab={openPatientWithTab}
+            onNewPatient={startNewPatient}
+          />
         )}
+
+        {/* Dossier / PatientWorkstation (default screen) */}
+        {(page === "patients" || (page !== "dashboard" && page !== "patients-list" && page !== "appointments-page" && page !== "patients-today" && page !== "finance-page" && page !== "medicines-nav" && page !== "ai-credits" && page !== "import-legacy" && page !== "settings-nav" && page !== "analytics" && page !== "doctors-page" && page !== "diagnostic-page")) && (
+          <PatientWorkstation
+            patient={selectedPatient}
+            detail={detail}
+            patientForm={patientForm}
+            setPatientForm={setPatientForm}
+            saving={saving}
+            onSavePatient={savePatient}
+            onDeletePatient={deletePatient}
+            onBackToDirectory={() => { openPatientDirectory(); }}
+            visit={visit}
+            setVisit={setVisit}
+            onSaveVisit={saveVisit}
+            onDictate={dictateToVisit}
+            onRefreshPatient={() => selectedPatient?.id ? refreshPatient(selectedPatient.id) : null}
+            onNewPatient={startNewPatient}
+            uploadMode={uploadMode}
+            specialityConfig={specialityConfig}
+            medications={medications}
+            appointments={appointments}
+            onSaveAppointment={saveAppointment}
+            onSavePrescription={savePrescription}
+            onUpload={uploadDocument}
+            onSaveDocumentNotes={saveDocumentNotes}
+            onSaveCardioProfile={saveCardioProfile}
+            onSaveVitals={saveVitals}
+            onSaveLabs={saveLabs}
+            onSaveEcg={saveEcg}
+            onSaveImaging={saveImaging}
+            onSaveDiagnosis={saveDiagnosis}
+            onDeleteDiagnosis={removeDiagnosis}
+            onAutoFollowup={autoFollowup}
+            section={patientSection}
+            embeddedPanels={{
+              ordonnance:   <DocumentTemplatesPanel patient={selectedPatient} defaultCategory="ordonnance" allowedCategories={["ordonnance"]} />,
+              explorations: <ImagingLabsPanelV2 patient={selectedPatient} cardio={detail?.cardio} onSaveImaging={saveImaging} onSaveLabs={saveLabs} />,
+              courriers:    <DocumentTemplatesPanel patient={selectedPatient} defaultCategory="certificat" allowedCategories={["certificat", "rapport"]} />,
+              comptes:      <DocumentTemplatesPanel patient={selectedPatient} defaultCategory="rapport" allowedCategories={["rapport"]} />,
+              historique:   <Timeline detail={detail} />,
+              rendezvous:   <FollowupPanel patient={selectedPatient} cardio={detail?.cardio} appointments={appointments} onAutoFollowup={autoFollowup} onSaveAppointment={saveAppointment} />,
+              reglement:    <ReglementPanelV2 patient={selectedPatient} />,
+              caisse:       <CaisseHistoryPanel patient={selectedPatient} />,
+              internet:     <DocumentsPanel patient={selectedPatient} detail={detail} onUpload={uploadDocument} onSaveNotes={saveDocumentNotes} uploadMode={uploadMode} onFillVisit={(data) => setVisit(v => ({...v, ...data}))} onRefreshPatient={() => refreshPatient(selectedPatient.id)} />,
+              qr:           <DocumentsPanel patient={selectedPatient} detail={detail} onUpload={uploadDocument} onSaveNotes={saveDocumentNotes} uploadMode={uploadMode} onFillVisit={(data) => setVisit(v => ({...v, ...data}))} onRefreshPatient={() => refreshPatient(selectedPatient.id)} />,
+              photos:       <DocumentsPanel patient={selectedPatient} detail={detail} onUpload={uploadDocument} onSaveNotes={saveDocumentNotes} uploadMode={uploadMode} onFillVisit={(data) => setVisit(v => ({...v, ...data}))} onRefreshPatient={() => refreshPatient(selectedPatient.id)} mediaOnly />,
+              antecedents:  <AntecedentsContentPanel patient={selectedPatient} form={patientForm} setForm={setPatientForm} saving={saving} onSave={savePatient} />,
+              ai:           <AIPanel patient={selectedPatient} aiWarnings={aiWarnings} onCheck={aiCheck} specialityConfig={specialityConfig} />,
+              stats:        <PatientQuickStats patient={selectedPatient} detail={detail} />,
+            }}
+          />
+        )}
+        </main>
       </div>
-    </main>
+    </div>
   );
 }
